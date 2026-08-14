@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EXIT Toys · C2PA AI-labeltool</title>
+<style>
+  :root{
+    --bg:#0f1420; --panel:#161c2b; --panel2:#1c2436; --line:#2a3448;
+    --text:#e7ecf5; --muted:#93a0b8; --accent:#ff6a00; --accent2:#ff8c3a;
+    --ok:#3ddc84; --warn:#ffb020; --err:#ff5a5a; --blue:#4aa3ff;
+    --radius:12px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  a{color:var(--accent2)}
+  header{padding:18px 24px;border-bottom:1px solid var(--line);
+    display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:var(--panel);}
+  header h1{font-size:17px;margin:0;font-weight:650;letter-spacing:.2px}
+  header .sub{color:var(--muted);font-size:12px}
+  .badge{font-size:12px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);white-space:nowrap}
+  .badge.ok{color:var(--ok);border-color:#204a35;background:#12241a}
+  .badge.err{color:var(--err);border-color:#4a2020;background:#241212}
+  .badge.info{color:var(--blue);border-color:#22405e;background:#122031}
+  main{max-width:1180px;margin:0 auto;padding:20px 24px 80px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:920px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:18px}
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:0 0 14px;font-weight:600}
+  label.field{display:block;margin-bottom:12px}
+  label.field > span{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+  input[type=text],input[type=number],select,textarea{
+    width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);
+    border-radius:8px;padding:8px 10px;font-size:13px;outline:none}
+  input:focus,select:focus{border-color:var(--accent)}
+  .row{display:flex;gap:10px}
+  .row > *{flex:1}
+  .check{display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:13px;cursor:pointer}
+  .check input{width:16px;height:16px;accent-color:var(--accent)}
+  .btn{background:var(--accent);color:#111;border:none;border-radius:8px;padding:9px 16px;
+    font-size:13px;font-weight:650;cursor:pointer}
+  .btn:hover{background:var(--accent2)}
+  .btn:disabled{background:#43485a;color:#8a92a6;cursor:not-allowed}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--text);font-weight:500}
+  .btn.ghost:hover{border-color:var(--accent)}
+  .btn.sm{padding:6px 10px;font-size:12px}
+  .tpl-bar{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+  .tpl-bar .grow{flex:1;min-width:160px}
+  .warn-box{background:#2a1e0a;border:1px solid #6a4a12;color:#ffd48a;border-radius:8px;
+    padding:10px 12px;font-size:12.5px;margin-top:8px;display:none}
+  .warn-box.show{display:block}
+  .warn-box b{color:var(--warn)}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:4px}
+  .preview-wrap{background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+    overflow:hidden;min-height:180px;display:flex;align-items:center;justify-content:center}
+  .preview-wrap img{max-width:100%;display:block}
+  .slider-row{display:flex;align-items:center;gap:10px}
+  .slider-row input[type=range]{flex:1;accent-color:var(--accent)}
+  .slider-row .val{width:52px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+  #startBtn{font-size:15px;padding:12px 28px;width:100%}
+  .progress{height:12px;background:var(--panel2);border:1px solid var(--line);border-radius:999px;overflow:hidden;margin:6px 0 12px}
+  .progress > i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .2s}
+  .log{background:#0b0f17;border:1px solid var(--line);border-radius:8px;height:280px;overflow:auto;
+    padding:8px 10px;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace}
+  .log .l{display:flex;gap:8px;padding:1px 0}
+  .tag{flex:0 0 auto;font-weight:700;width:42px}
+  .tag.OK{color:var(--ok)} .tag.SKIP{color:var(--muted)} .tag.FOUT{color:var(--err)}
+  .tag.INFO{color:var(--blue)}
+  .log .fn{color:#cdd6ea;flex:0 0 auto;max-width:38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .log .ms{color:var(--muted)}
+  .log .lay{color:var(--accent2);margin-left:auto;flex:0 0 auto}
+  .summary{display:none;margin-top:14px;padding:14px;border-radius:10px;background:var(--panel2);border:1px solid var(--line)}
+  .summary.show{display:block}
+  .summary .nums{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:6px}
+  .summary .n b{font-size:20px} .summary .n.ok b{color:var(--ok)}
+  .summary .n.sk b{color:var(--muted)} .summary .n.er b{color:var(--err)}
+  .file-hint{font-size:11px;color:var(--muted);word-break:break-all}
+  code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>EXIT Toys · C2PA AI-labeltool</h1>
+    <div class="sub">Zichtbaar AI-icoon inbranden + machine-leesbare C2PA-herkomst (EU AI Act art. 50)</div>
+  </div>
+  <div style="margin-left:auto;display:flex;gap:10px;flex-wrap:wrap">
+    <span id="c2paBadge" class="badge info">c2patool: controleren…</span>
+    <span id="ffBadge" class="badge info">ffmpeg: …</span>
+  </div>
+</header>
+
+<main>
+  <!-- Templates -->
+  <div class="card">
+    <h2>Template</h2>
+    <div class="tpl-bar">
+      <label class="field grow" style="margin:0">
+        <span>Opgeslagen template laden</span>
+        <select id="tplSelect"><option value="">Nieuw / leeg</option></select>
+      </label>
+      <label class="field grow" style="margin:0">
+        <span>Templatenaam</span>
+        <input type="text" id="tplName" placeholder="bv. Foxy — volledig AI" />
+      </label>
+      <button class="btn sm" id="tplSave">Opslaan</button>
+      <button class="btn ghost sm" id="tplUpdate">Bijwerken</button>
+      <button class="btn ghost sm" id="tplDelete">Verwijderen</button>
+    </div>
+    <label class="check" style="margin-top:10px"><input type="checkbox" id="tplDefault"> Als standaard instellen (laadt automatisch bij opstarten)</label>
+  </div>
+
+  <div class="grid">
+    <!-- Linkerkolom: C2PA -->
+    <div>
+      <div class="card">
+        <h2>Invoer & uitvoer</h2>
+        <label class="field"><span>Mappad (invoer) — absoluut pad *</span>
+          <input type="text" id="input_dir" placeholder="/Users/merijn/…/beelden" />
+        </label>
+        <label class="field"><span>Uitvoermap (<code>&lt;invoer&gt;</code> = de invoermap)</span>
+          <input type="text" id="output_dir" placeholder="<invoer>/gelabeld" />
+          <div class="hint">Originelen worden nooit overschreven. Leeg = <code>&lt;invoer&gt;/gelabeld</code>.</div>
+        </label>
+        <label class="check"><input type="checkbox" id="recursive"> Ook submappen</label>
+      </div>
+
+      <div class="card">
+        <h2>C2PA-herkomst</h2>
+        <label class="field"><span>Bronsoort → digitalSourceType</span>
+          <select id="bronsoort">
+            <option value="volledig">Volledig AI-gegenereerd</option>
+            <option value="composite">Echte foto met AI-elementen (composite)</option>
+          </select>
+        </label>
+        <div class="row">
+          <label class="field"><span>AI-tool (softwareAgent) *</span>
+            <input type="text" id="ai_tool" placeholder="Gemini / Weavy / Kling" />
+          </label>
+          <label class="field"><span>Model (optioneel)</span>
+            <input type="text" id="model" placeholder="bv. 2.5" />
+          </label>
+        </div>
+        <label class="field"><span>Organisatie</span>
+          <input type="text" id="organisatie" value="EXIT Toys / Dutch Toys Group" />
+        </label>
+        <label class="check"><input type="checkbox" id="training_allowed"> Training op dit beeld toestaan (standaard uit → notAllowed)</label>
+      </div>
+
+      <div class="card">
+        <h2>Ondertekening</h2>
+        <div class="row">
+          <label class="field"><span>Certificaat (.pem)</span>
+            <input type="text" id="cert_path" placeholder="pad naar cert.pem (optioneel)" />
+          </label>
+          <label class="field"><span>Private key</span>
+            <input type="text" id="key_path" placeholder="pad naar key.pem (optioneel)" />
+          </label>
+        </div>
+        <label class="field"><span>Algoritme</span>
+          <select id="alg">
+            <option value="es256">es256 (standaard)</option>
+            <option value="ps256">ps256</option>
+            <option value="ed25519">ed25519</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" id="use_test_cert" checked> Gebruik test-certificaat</label>
+        <label class="check"><input type="checkbox" id="verify" checked> Verifiëren na tekenen</label>
+        <div class="warn-box" id="testWarn"><b>Test-certificaat:</b> technisch geldig maar verifiers tonen de ondertekenaar als <b>“untrusted”</b>. Voor publicatie een echt CA-certificaat gebruiken.</div>
+      </div>
+    </div>
+
+    <!-- Rechterkolom: zichtbaar label -->
+    <div>
+      <div class="card">
+        <h2>Zichtbaar label (ingebrand icoon)</h2>
+        <label class="check"><input type="checkbox" id="burn_icon" checked> Zichtbaar icoon inbranden</label>
+        <div id="labelSettings">
+          <div class="row">
+            <label class="field"><span>Icoon</span>
+              <select id="lbl_icon"></select>
+            </label>
+            <label class="field" style="flex:0 0 auto;display:flex;align-items:flex-end">
+              <span style="display:none">upload</span>
+              <button class="btn ghost sm" id="iconUploadBtn" type="button">Icoon uploaden…</button>
+              <input type="file" id="iconFile" accept="image/png" style="display:none" />
+            </label>
+          </div>
+          <div class="row">
+            <label class="field"><span>Tekstlabel</span>
+              <input type="text" id="lbl_text" placeholder="AI-generated / AI-edited / leeg" />
+            </label>
+            <label class="field"><span>Hoek</span>
+              <select id="lbl_corner">
+                <option value="rechtsonder">rechtsonder</option>
+                <option value="linksonder">linksonder</option>
+                <option value="rechtsboven">rechtsboven</option>
+                <option value="linksboven">linksboven</option>
+              </select>
+            </label>
+          </div>
+          <label class="field"><span>Formaat — icoonbreedte als % van beeldbreedte</span>
+            <div class="slider-row">
+              <input type="range" id="lbl_size" min="2" max="30" step="0.5" value="7" />
+              <span class="val"><span id="lbl_size_v">7</span>%</span>
+            </div>
+          </label>
+          <div class="row">
+            <label class="field"><span>Min. breedte (px)</span><input type="number" id="lbl_min" value="28" /></label>
+            <label class="field"><span>Max. breedte (px)</span><input type="number" id="lbl_max" value="96" /></label>
+          </div>
+          <label class="field"><span>Marge vanaf de rand — % van beeldbreedte</span>
+            <div class="slider-row">
+              <input type="range" id="lbl_margin" min="0" max="10" step="0.5" value="2" />
+              <span class="val"><span id="lbl_margin_v">2</span>%</span>
+            </div>
+          </label>
+          <label class="check"><input type="checkbox" id="lbl_pill" checked> Contrast-pill (semi-transparante achtergrond)</label>
+          <label class="field"><span>Pill-transparantie (alpha 0–255)</span>
+            <div class="slider-row">
+              <input type="range" id="lbl_pill_op" min="0" max="255" step="5" value="110" />
+              <span class="val" id="lbl_pill_op_v">110</span>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Live preview</h2>
+        <div class="preview-wrap"><img id="previewImg" alt="preview" /></div>
+        <div class="hint" id="previewSrc">Nog geen beeld geladen.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <button class="btn" id="startBtn">Start</button>
+    <div class="progress"><i id="bar"></i></div>
+    <div class="log" id="log"></div>
+    <div class="summary" id="summary">
+      <div class="nums">
+        <div class="n ok"><b id="sSigned">0</b> getekend</div>
+        <div class="n sk"><b id="sSkipped">0</b> overgeslagen</div>
+        <div class="n er"><b id="sErrors">0</b> fouten</div>
+      </div>
+      <div class="file-hint">Uitvoermap: <span id="sOut"></span></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let C2PA_OK = false;
+
+// ---- veldbeheer ----
+const LABEL_IDS = {
+  icon:'lbl_icon', text:'lbl_text', corner:'lbl_corner',
+  size_pct:'lbl_size', min_px:'lbl_min', max_px:'lbl_max',
+  margin_pct:'lbl_margin', pill:'lbl_pill', pill_opacity:'lbl_pill_op'
+};
+
+function collectLabel(){
+  return {
+    icon: $('lbl_icon').value,
+    text: $('lbl_text').value,
+    corner: $('lbl_corner').value,
+    size_pct: parseFloat($('lbl_size').value),
+    min_px: parseInt($('lbl_min').value||'0'),
+    max_px: parseInt($('lbl_max').value||'0'),
+    margin_pct: parseFloat($('lbl_margin').value),
+    pill: $('lbl_pill').checked,
+    pill_opacity: parseInt($('lbl_pill_op').value)
+  };
+}
+
+function collectConfig(includeInput=true){
+  return {
+    input_dir: includeInput ? $('input_dir').value.trim() : '',
+    output_dir: $('output_dir').value.trim(),
+    recursive: $('recursive').checked,
+    bronsoort: $('bronsoort').value,
+    ai_tool: $('ai_tool').value.trim(),
+    model: $('model').value.trim(),
+    organisatie: $('organisatie').value.trim(),
+    training_allowed: $('training_allowed').checked,
+    cert_path: $('cert_path').value.trim(),
+    key_path: $('key_path').value.trim(),
+    alg: $('alg').value,
+    use_test_cert: $('use_test_cert').checked,
+    verify: $('verify').checked,
+    burn_icon: $('burn_icon').checked,
+    label: collectLabel()
+  };
+}
+
+function applyConfig(f){
+  if(!f) return;
+  const set=(id,v,def)=>{ if(v!==undefined&&v!==null) $(id).value=v; else if(def!==undefined) $(id).value=def; };
+  const chk=(id,v,def)=>{ $(id).checked = (v!==undefined&&v!==null)?!!v:!!def; };
+  // input_dir wordt bewust NIET gezet (per run)
+  set('output_dir', f.output_dir, '');
+  chk('recursive', f.recursive, false);
+  set('bronsoort', f.bronsoort, 'volledig');
+  set('ai_tool', f.ai_tool, '');
+  set('model', f.model, '');
+  set('organisatie', f.organisatie, 'EXIT Toys / Dutch Toys Group');
+  chk('training_allowed', f.training_allowed, false);
+  set('cert_path', f.cert_path, '');
+  set('key_path', f.key_path, '');
+  set('alg', f.alg, 'es256');
+  chk('use_test_cert', f.use_test_cert, true);
+  chk('verify', f.verify, true);
+  chk('burn_icon', f.burn_icon, true);
+  const l=f.label||{};
+  if(l.icon) setIconValue(l.icon);
+  set('lbl_text', l.text, '');
+  set('lbl_corner', l.corner, 'rechtsonder');
+  set('lbl_size', l.size_pct, 7);
+  set('lbl_min', l.min_px, 28);
+  set('lbl_max', l.max_px, 96);
+  set('lbl_margin', l.margin_pct, 2);
+  chk('lbl_pill', l.pill, true);
+  set('lbl_pill_op', l.pill_opacity, 110);
+  syncUI(); schedulePreview();
+}
+
+function setIconValue(name){
+  const sel=$('lbl_icon');
+  if(![...sel.options].some(o=>o.value===name)){
+    const o=document.createElement('option'); o.value=o.textContent=name; sel.appendChild(o);
+  }
+  sel.value=name;
+}
+
+// ---- UI sync (waarden, warnings, enable/disable) ----
+function syncUI(){
+  $('lbl_size_v').textContent=$('lbl_size').value;
+  $('lbl_margin_v').textContent=$('lbl_margin').value;
+  $('lbl_pill_op_v').textContent=$('lbl_pill_op').value;
+  const testOn = $('use_test_cert').checked;
+  const noCert = !$('cert_path').value.trim() || !$('key_path').value.trim();
+  $('testWarn').classList.toggle('show', testOn || noCert);
+  $('labelSettings').style.opacity = $('burn_icon').checked ? '1':'.45';
+  $('labelSettings').style.pointerEvents = $('burn_icon').checked ? 'auto':'none';
+  $('startBtn').disabled = !C2PA_OK;
+  $('startBtn').textContent = C2PA_OK ? 'Start' : 'Start (c2patool ontbreekt)';
+}
+
+// ---- preview ----
+let previewTimer=null;
+function schedulePreview(){
+  clearTimeout(previewTimer);
+  previewTimer=setTimeout(doPreview, 250);
+}
+async function doPreview(){
+  try{
+    const r=await fetch('/api/preview',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({input_dir:$('input_dir').value.trim(),recursive:$('recursive').checked,
+        enabled:$('burn_icon').checked,label:collectLabel()})});
+    const j=await r.json();
+    if(j.image){ $('previewImg').src=j.image; $('previewSrc').textContent='Bron: '+(j.source||''); }
+  }catch(e){/* stil */}
+}
+
+// ---- templates ----
+let TEMPLATES=[];
+async function loadTemplates(applyDefault=false){
+  const r=await fetch('/api/templates'); const j=await r.json();
+  TEMPLATES=j.templates||[];
+  const sel=$('tplSelect');
+  sel.innerHTML='<option value="">Nieuw / leeg</option>';
+  TEMPLATES.forEach(t=>{
+    const o=document.createElement('option'); o.value=t.name;
+    o.textContent=t.name+(t.default?' ★':''); sel.appendChild(o);
+  });
+  if(applyDefault){
+    const def=TEMPLATES.find(t=>t.default);
+    if(def){ sel.value=def.name; $('tplName').value=def.name; $('tplDefault').checked=true; applyConfig(def.fields); }
+  }
+}
+$('tplSelect').onchange=()=>{
+  const t=TEMPLATES.find(x=>x.name===$('tplSelect').value);
+  if(t){ $('tplName').value=t.name; $('tplDefault').checked=!!t.default; applyConfig(t.fields); }
+  else { $('tplName').value=''; }
+};
+$('tplSave').onclick=async()=>{
+  const name=$('tplName').value.trim();
+  if(!name){ alert('Geef eerst een templatenaam op.'); return; }
+  const exists=TEMPLATES.some(t=>t.name===name);
+  if(exists && !confirm(`Template “${name}” bestaat al. Overschrijven?`)) return;
+  const r=await fetch('/api/templates',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name, overwrite:exists, default:$('tplDefault').checked, fields:collectConfig(false)})});
+  if(r.ok){ await loadTemplates(); $('tplSelect').value=name; toast('Template opgeslagen.'); }
+  else toast('Opslaan mislukt.',true);
+};
+$('tplUpdate').onclick=async()=>{
+  const name=$('tplSelect').value || $('tplName').value.trim();
+  if(!name || !TEMPLATES.some(t=>t.name===name)){ alert('Selecteer eerst een bestaande template om bij te werken.'); return; }
+  const r=await fetch('/api/templates/'+encodeURIComponent(name),{method:'PUT',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({default:$('tplDefault').checked, fields:collectConfig(false)})});
+  if(r.ok){ await loadTemplates(); $('tplSelect').value=name; toast('Template bijgewerkt.'); }
+  else toast('Bijwerken mislukt.',true);
+};
+$('tplDelete').onclick=async()=>{
+  const name=$('tplSelect').value;
+  if(!name){ alert('Selecteer eerst een template om te verwijderen.'); return; }
+  if(!confirm(`Template “${name}” verwijderen?`)) return;
+  const r=await fetch('/api/templates/'+encodeURIComponent(name),{method:'DELETE'});
+  if(r.ok){ await loadTemplates(); $('tplName').value=''; toast('Template verwijderd.'); }
+};
+
+// ---- icons ----
+async function loadIcons(select){
+  const r=await fetch('/api/icons'); const j=await r.json();
+  const sel=$('lbl_icon'); const cur=select||sel.value;
+  sel.innerHTML='';
+  (j.icons||[]).forEach(n=>{ const o=document.createElement('option'); o.value=o.textContent=n; sel.appendChild(o); });
+  if(cur && [...sel.options].some(o=>o.value===cur)) sel.value=cur;
+}
+$('iconUploadBtn').onclick=()=>$('iconFile').click();
+$('iconFile').onchange=async()=>{
+  const f=$('iconFile').files[0]; if(!f) return;
+  const fd=new FormData(); fd.append('file',f);
+  const r=await fetch('/api/icons',{method:'POST',body:fd}); const j=await r.json();
+  if(r.ok){ await loadIcons(j.name); toast('Icoon geüpload.'); schedulePreview(); }
+  else toast(j.detail||'Upload mislukt.',true);
+};
+
+// ---- toast ----
+let toastT=null;
+function toast(msg,err=false){
+  let el=$('toast');
+  if(!el){ el=document.createElement('div'); el.id='toast';
+    el.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:99;'+
+      'padding:10px 18px;border-radius:8px;font-size:13px;box-shadow:0 8px 30px rgba(0,0,0,.4)';
+    document.body.appendChild(el); }
+  el.style.background=err?'#3a1414':'#123322'; el.style.color=err?'#ffb4b4':'#b6f0cf';
+  el.style.border='1px solid '+(err?'#5a2020':'#204a35'); el.textContent=msg;
+  el.style.opacity='1'; clearTimeout(toastT); toastT=setTimeout(()=>el.style.opacity='0',2600);
+}
+
+// ---- processing ----
+$('startBtn').onclick=async()=>{
+  if(!C2PA_OK) return;
+  const cfg=collectConfig(true);
+  if(!cfg.input_dir){ toast('Mappad (invoer) is verplicht.',true); return; }
+  if(!cfg.ai_tool){ toast('AI-tool is verplicht.',true); return; }
+  $('log').innerHTML=''; $('bar').style.width='0%'; $('summary').classList.remove('show');
+  $('startBtn').disabled=true; $('startBtn').textContent='Bezig…';
+  let res;
+  try{
+    res=await fetch('/api/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)});
+  }catch(e){ toast('Kon proces niet starten.',true); resetStart(); return; }
+  if(!res.ok){ const j=await res.json().catch(()=>({})); toast(j.detail||'Start mislukt.',true); resetStart(); return; }
+  const {job_id}=await res.json();
+  const es=new EventSource('/api/stream/'+job_id);
+  es.onmessage=(m)=>{
+    const ev=JSON.parse(m.data);
+    if(ev.type==='start'){ addLog('INFO','',`${ev.total} bestand(en) gevonden · uitvoer: ${ev.output}`,''); }
+    else if(ev.type==='progress'){ $('bar').style.width=Math.round(ev.done/ev.total*100)+'%'; }
+    else if(ev.type==='log'){ addLog(ev.status,ev.file,ev.msg,ev.layers); }
+    else if(ev.type==='error'){ addLog('FOUT','',ev.msg,''); }
+    else if(ev.type==='summary'){ showSummary(ev); }
+    else if(ev.type==='done'){ es.close(); resetStart(); }
+  };
+  es.onerror=()=>{ es.close(); resetStart(); };
+};
+function resetStart(){ $('startBtn').disabled=!C2PA_OK; syncUI(); }
+function addLog(status,file,msg,layers){
+  const l=document.createElement('div'); l.className='l';
+  l.innerHTML=`<span class="tag ${status}">${status}</span>`+
+    (file?`<span class="fn">${escapeHtml(file)}</span>`:'')+
+    `<span class="ms">${escapeHtml(msg||'')}</span>`+
+    (layers?`<span class="lay">${escapeHtml(layers)}</span>`:'');
+  $('log').appendChild(l); $('log').scrollTop=$('log').scrollHeight;
+}
+function showSummary(ev){
+  $('sSigned').textContent=ev.signed; $('sSkipped').textContent=ev.skipped;
+  $('sErrors').textContent=ev.errors; $('sOut').textContent=ev.output;
+  $('summary').classList.add('show'); $('bar').style.width='100%';
+  toast(`Klaar: ${ev.signed} getekend, ${ev.skipped} overgeslagen, ${ev.errors} fouten.`);
+}
+function escapeHtml(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+// ---- listeners ----
+['use_test_cert','cert_path','key_path','burn_icon'].forEach(id=>$(id).addEventListener('input',syncUI));
+Object.values(LABEL_IDS).forEach(id=>{ $(id).addEventListener('input',()=>{syncUI();schedulePreview();}); });
+$('input_dir').addEventListener('input',schedulePreview);
+$('recursive').addEventListener('change',schedulePreview);
+$('burn_icon').addEventListener('change',()=>{syncUI();schedulePreview();});
+
+// ---- init ----
+(async function init(){
+  const r=await fetch('/api/status'); const s=await r.json();
+  C2PA_OK=s.c2patool.present;
+  const cb=$('c2paBadge');
+  if(C2PA_OK){ cb.className='badge ok'; cb.textContent='c2patool: '+(s.c2patool.version||'gevonden'); }
+  else { cb.className='badge err'; cb.textContent='c2patool ontbreekt — installeer: cargo install c2patool';
+    cb.title='Installeer c2patool (cargo install c2patool of binary van github.com/contentauth/c2pa-rs) en herstart.'; }
+  const fb=$('ffBadge');
+  fb.className='badge '+(s.ffmpeg?'ok':'info');
+  fb.textContent='ffmpeg: '+(s.ffmpeg?'gevonden':'niet gevonden (video zonder zichtbaar label)');
+  await loadIcons();
+  await loadTemplates(true);
+  syncUI(); doPreview();
+})();
+</script>
+</body>
+</html>
