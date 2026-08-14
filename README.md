@@ -103,9 +103,11 @@ Per bestand worden deze assertions gezet:
 ## Test-certificaat vs. productie-certificaat
 
 - **Test-certificaat** (standaard aan, of wanneer je geen cert opgeeft): tekent
-  met de ingebouwde test-credentials van `c2patool`. Het manifest is **technisch
-  geldig**, maar verifiers (bv. Content Credentials / Verify) tonen de
-  ondertekenaar als **“untrusted”**. Prima om te testen — **niet voor publicatie**.
+  met het **meegeleverde es256 test-certificaat** in `certs/test/`
+  (zie `certs/test/README.md`). Het manifest is **cryptografisch geldig**
+  (`validation_state: Valid`), maar verifiers (bv. Content Credentials / Verify)
+  tonen de ondertekenaar als **“untrusted”** (`signingCredential.untrusted`).
+  Prima om te testen — **niet voor publicatie**.
 - **Productie-certificaat**: een **door een CA ondertekend** certificaat (`.pem`)
   + bijbehorende private key. Vul beide velden in en kies het juiste algoritme
   (`es256` / `ps256` / `ed25519`). Alleen dan verschijnt jouw organisatie als
@@ -131,6 +133,7 @@ requirements.txt  Python-dependencies
 templates.json    Opgeslagen templates (start als lege lijst)
 icons/            Icoonbestanden (PNG met transparantie); een AI-badge wordt
                   automatisch aangemaakt als de map leeg is
+certs/test/       Meegeleverd es256 TEST-certificaat (untrusted, alleen testen)
 ```
 
 ## Ondersteunde bestandstypen
