@@ -903,7 +903,10 @@ def main():
     print(f"  ffmpeg   : {'gevonden (video-overlay mogelijk)' if ffmpeg_present() else 'niet gevonden (video krijgt geen zichtbaar label)'}")
     print(f"\n  Open in de browser:  http://localhost:{PORT}\n{banner}\n")
 
-    threading.Thread(target=open_browser, daemon=True).start()
+    # De macOS-app opent de browser zelf zodra de server klaar is; dan slaan we
+    # onze eigen auto-open over (C2PA_NO_BROWSER=1) om dubbele tabs te voorkomen.
+    if not os.environ.get("C2PA_NO_BROWSER"):
+        threading.Thread(target=open_browser, daemon=True).start()
     uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
 
 

@@ -13,25 +13,44 @@ Alles draait lokaal — er verlaat geen data je machine.
 
 ---
 
-## Snel starten
+## Starten (macOS) — gewoon dubbelklikken
+
+Er staat een echte macOS-app: **`C2PA AI-labeltool`** (in je map Programma's /
+Applications, ook via Spotlight of Launchpad te vinden).
+
+1. Dubbelklik op **C2PA AI-labeltool**.
+2. De tool opent vanzelf in je browser op <http://localhost:8000>.
+
+Meer is er niet: `c2patool` zit **in de app ingebouwd** en de eerste keer regelt
+de app zelf de Python-installatie (eenmalig, internet nodig). Geen terminal.
+
+> De app is een lichte “launcher” die de code in `~/c2pa-ai-tool` start. Blijft
+> de app op de achtergrond draaien; elke keer dat je 'm opent, komt de tool weer
+> in beeld.
+
+### App (opnieuw) bouwen
+
+Verplaats je het project of wil je de app opnieuw aanmaken:
 
 ```bash
-# 1. (aanbevolen) virtuele omgeving
+bash ~/c2pa-ai-tool/macapp/build_mac_app.sh
+```
+
+Dat zet `C2PA AI-labeltool.app` in `/Applications` (of `~/Applications`) met
+`c2patool` meegebundeld.
+
+## Starten via de terminal (alternatief / andere platforms)
+
+```bash
 python3 -m venv .venv
 source .venv/bin/activate        # macOS/Linux
 # .venv\Scripts\activate         # Windows
-
-# 2. Python-dependencies
 python -m pip install -r requirements.txt
-
-# 3. c2patool installeren (de C2PA-ondertekenmotor) — zie hieronder
-
-# 4. Starten
-python app.py
+python app.py                    # opent http://localhost:8000
 ```
 
-De tool opent automatisch <http://localhost:8000>. Ontbreekt een Python-pakket,
-dan print `app.py` een duidelijke install-instructie en stopt.
+Ontbreekt een Python-pakket, dan print `app.py` een duidelijke install-instructie
+en stopt. Voor deze route moet `c2patool` wél op je `PATH` staan (zie hieronder).
 
 ## c2patool installeren
 
@@ -134,6 +153,7 @@ templates.json    Opgeslagen templates (start als lege lijst)
 icons/            Icoonbestanden (PNG met transparantie); een AI-badge wordt
                   automatisch aangemaakt als de map leeg is
 certs/test/       Meegeleverd es256 TEST-certificaat (untrusted, alleen testen)
+macapp/           Bouwscript + launcher + icoon voor de dubbelklik-macOS-app
 ```
 
 ## Ondersteunde bestandstypen
