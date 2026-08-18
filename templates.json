@@ -25,18 +25,5 @@
         "pill_opacity": 110
       }
     }
-  },
-  {
-    "name": "__test_excl__",
-    "default": false,
-    "fields": {
-      "model": "2.5",
-      "organisatie": "EXIT",
-      "recursive": true,
-      "burn_icon": true,
-      "label": {
-        "icon": "x.png"
-      }
-    }
   }
 ]
