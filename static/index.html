@@ -60,10 +60,10 @@
   .btn.sm{padding:7px 12px;font-size:12px}
   .tpl-bar{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
   .tpl-bar .grow{flex:1;min-width:160px}
-  .warn-box{background:rgba(255,176,32,.08);border:1px solid rgba(255,176,32,.35);color:#ffd48a;border-radius:var(--radius-sm);
-    padding:11px 13px;font-size:12.5px;margin-top:8px;display:none}
+  .warn-box{background:rgba(255,255,255,.03);border:1px solid var(--line);color:var(--muted);border-radius:var(--radius-sm);
+    padding:11px 13px;font-size:12.5px;margin-top:8px;display:none;line-height:1.5}
   .warn-box.show{display:block}
-  .warn-box b{color:var(--warn)}
+  .warn-box b{color:var(--text);font-weight:600}
   .hint{font-size:11.5px;color:var(--muted-2);margin-top:5px}
   .preview-wrap{background:var(--card-2);border:1px solid var(--line);border-radius:14px;
     overflow:hidden;min-height:180px;display:flex;align-items:center;justify-content:center}
@@ -183,9 +183,9 @@
             <option value="ed25519">ed25519</option>
           </select>
         </label>
-        <label class="check"><input type="checkbox" id="use_test_cert" checked> Gebruik test-certificaat</label>
+        <label class="check"><input type="checkbox" id="use_test_cert" checked> Intern EXIT-certificaat gebruiken</label>
         <label class="check"><input type="checkbox" id="verify" checked> Verifiëren na tekenen</label>
-        <div class="warn-box" id="testWarn"><b>Test-certificaat:</b> technisch geldig maar verifiers tonen de ondertekenaar als <b>“untrusted”</b>. Voor publicatie een echt CA-certificaat gebruiken.</div>
+        <div class="warn-box" id="testWarn"><b>Intern certificaat.</b> De C2PA-markering is geldig en bevat jullie herkomst (EXIT Toys / Dutch Toys Group). Externe verifiers tonen de ondertekenaar pas als onafhankelijk bevestigd zodra je een certificaat van een certificaatautoriteit toevoegt.</div>
       </div>
     </div>
 

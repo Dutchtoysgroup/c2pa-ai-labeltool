@@ -44,7 +44,7 @@ def main():
     ca_key = _key()
     ca_name = x509.Name([
         x509.NameAttribute(NameOID.ORGANIZATION_NAME, NAME),
-        x509.NameAttribute(NameOID.COMMON_NAME, NAME + " Test Root"),
+        x509.NameAttribute(NameOID.COMMON_NAME, NAME + " Internal CA"),
         x509.NameAttribute(NameOID.COUNTRY_NAME, "NL"),
     ])
     ca_cert = (
