@@ -13,40 +13,25 @@ Alles draait lokaal — er verlaat geen data je machine.
 
 ---
 
-## Installatie voor collega's (vanaf GitHub)
+## Installatie — zo krijg je de app
 
-Eenmalig, op een Mac:
+**Dit is de standaardmanier om de app te installeren.** Je hebt toegang tot deze
+repo nodig (`Dutchtoysgroup/c2pa-ai-labeltool`) — vraag de beheerder of je bent
+toegevoegd.
 
-```bash
-git clone https://github.com/Dutchtoysgroup/c2pa-ai-labeltool.git ~/c2pa-ai-tool
-cd ~/c2pa-ai-tool
-bash macapp/build_mac_app.sh
-```
+1. Pak **`install.command`** (download het uit deze repo via **Code → download**,
+   of ontvang `Installeer C2PA AI-labeltool.zip` van de beheerder en pak het uit).
+2. **Rechtermuisklik → Open** op `install.command` (eenmalig; vanwege
+   macOS-beveiliging wordt een gewone dubbelklik geblokkeerd).
+3. **Log één keer in bij GitHub** in de browser (opent vanzelf).
+4. Klaar. De app wordt opgehaald, gebouwd en gestart, en staat voortaan in
+   **Programma's**. Vanaf dan werkt hij zichzelf bij vanaf GitHub.
 
-Dat bouwt de app **C2PA AI-labeltool** in je map Programma's, met `c2patool`
-automatisch meegedownload. Daarna: gewoon dubbelklikken. De eerste start regelt
-de Python-installatie zelf (internet nodig).
+De installer regelt de rest zelf: git, het GitHub-hulpje (`gh`) en `c2patool`.
+Werkt op Apple Silicon én Intel-Macs.
 
-> Werkt op Apple Silicon en Intel-Macs. Windows/Linux: geen dubbelklik-app, wel
-> de terminal-route hieronder.
-
-## De app uitdelen aan collega's (dubbelklik-installer)
-
-Collega's hoeven niet met de terminal te werken. Er is een installer:
-`macapp/install.command`.
-
-**Jij (beheerder) doet eenmalig:**
-1. Geef de collega toegang tot de repo (`Dutchtoysgroup/c2pa-ai-labeltool`).
-2. Deel het bestand `Installeer C2PA AI-labeltool.command` met ze (bv. via Box).
-   Tip: deel het **als .zip**, dan blijft het "uitvoerbaar".
-
-**De collega doet:**
-1. Bestand uitpakken → **rechtermuisklik → Open** (eenmalig, i.v.m. macOS-beveiliging).
-2. Eén keer **inloggen bij GitHub** in de browser (opent vanzelf).
-3. Klaar — de app wordt opgehaald, gebouwd en gestart, en staat voortaan in
-   Programma's. Daarna werkt hij zichzelf bij vanaf GitHub.
-
-De installer regelt zelf git, het GitHub-hulpje (gh) en `c2patool`.
+> **Beheerder:** deel `install.command` met collega's als **.zip** (dan blijft het
+> uitvoerbaar), bijvoorbeeld via Box, en zorg dat ze toegang hebben tot de repo.
 
 ## Starten (macOS) — gewoon dubbelklikken
 
@@ -78,6 +63,18 @@ bash ~/c2pa-ai-tool/macapp/build_mac_app.sh
 
 Dat zet `C2PA AI-labeltool.app` in `/Applications` (of `~/Applications`) met
 `c2patool` meegebundeld.
+
+## Handmatige installatie (gevorderd)
+
+Liever zonder de installer? Op een Mac met git + Python 3:
+
+```bash
+git clone https://github.com/Dutchtoysgroup/c2pa-ai-labeltool.git ~/c2pa-ai-tool
+cd ~/c2pa-ai-tool
+bash macapp/build_mac_app.sh
+```
+
+Dat bouwt dezelfde app (met `c2patool` automatisch meegedownload).
 
 ## Starten via de terminal (alternatief / andere platforms)
 
