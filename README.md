@@ -13,6 +13,23 @@ Alles draait lokaal — er verlaat geen data je machine.
 
 ---
 
+## Installatie voor collega's (vanaf GitHub)
+
+Eenmalig, op een Mac:
+
+```bash
+git clone <repo-url> ~/c2pa-ai-tool
+cd ~/c2pa-ai-tool
+bash macapp/build_mac_app.sh
+```
+
+Dat bouwt de app **C2PA AI-labeltool** in je map Programma's, met `c2patool`
+automatisch meegedownload. Daarna: gewoon dubbelklikken. De eerste start regelt
+de Python-installatie zelf (internet nodig).
+
+> Werkt op Apple Silicon en Intel-Macs. Windows/Linux: geen dubbelklik-app, wel
+> de terminal-route hieronder.
+
 ## Starten (macOS) — gewoon dubbelklikken
 
 Er staat een echte macOS-app: **`C2PA AI-labeltool`** (in je map Programma's /
