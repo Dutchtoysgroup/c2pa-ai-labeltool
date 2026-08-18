@@ -3,11 +3,7 @@
     "name": "EXIT Toys - Standaard Ai",
     "default": false,
     "fields": {
-      "input_dir": "",
-      "output_dir": "/Users/merijnhappel/Desktop/EXIT/C2PA Test/Output",
       "recursive": false,
-      "bronsoort": "volledig",
-      "ai_tool": "Gemini",
       "model": "",
       "organisatie": "EXIT Toys / Dutch Toys Group",
       "training_allowed": false,
@@ -27,6 +23,19 @@
         "margin_pct": 2,
         "pill": false,
         "pill_opacity": 110
+      }
+    }
+  },
+  {
+    "name": "__test_excl__",
+    "default": false,
+    "fields": {
+      "model": "2.5",
+      "organisatie": "EXIT",
+      "recursive": true,
+      "burn_icon": true,
+      "label": {
+        "icon": "x.png"
       }
     }
   }
