@@ -18,7 +18,7 @@ Alles draait lokaal — er verlaat geen data je machine.
 Eenmalig, op een Mac:
 
 ```bash
-git clone <repo-url> ~/c2pa-ai-tool
+git clone https://github.com/Dutchtoysgroup/c2pa-ai-labeltool.git ~/c2pa-ai-tool
 cd ~/c2pa-ai-tool
 bash macapp/build_mac_app.sh
 ```
