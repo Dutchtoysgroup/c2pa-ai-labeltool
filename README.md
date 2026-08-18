@@ -127,6 +127,12 @@ Installeer op macOS met `brew install ffmpeg`.
   “Foxy — volledig AI”, “Productfoto — composite”) en herlaad ze; je hoeft dan
   alleen nog het invoer-mappad per run in te vullen. Het invoerpad wordt bewust
   *niet* in de template bewaard. Templates staan in `templates.json`.
+- **Automatisch delen via GitHub**: zodra je een template opslaat, bijwerkt of
+  verwijdert, of een icoon uploadt, wordt dat direct gecommit en naar de repo
+  gepusht. Zo ziet iederéén die de tool gebruikt dezelfde templates en iconen.
+  Een melding in beeld bevestigt of het delen via GitHub gelukt is; lukt het
+  pushen niet (bijv. offline of geen push-rechten), dan blijft de wijziging in
+  elk geval lokaal bewaard.
 - **Mappad (invoer)** → plak een absoluut pad. **Uitvoermap** → standaard
   `<invoer>/gelabeld`. Originelen worden nooit overschreven.
 - **Bronsoort** bepaalt de `digitalSourceType`:
