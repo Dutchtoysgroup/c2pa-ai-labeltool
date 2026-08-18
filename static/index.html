@@ -33,6 +33,7 @@
   .badge.ok{color:var(--primary);border-color:rgba(129,185,0,.35);background:rgba(129,185,0,.10)}
   .badge.err{color:var(--err);border-color:rgba(255,100,103,.35);background:rgba(255,100,103,.10)}
   .badge.info{color:var(--blue);border-color:rgba(122,162,247,.30);background:rgba(122,162,247,.10)}
+  .badge.upd{color:#ffcf7a;border-color:rgba(255,176,32,.40);background:rgba(255,176,32,.12)}
   main{max-width:1180px;margin:0 auto;padding:22px 24px 90px}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
   @media(max-width:920px){.grid{grid-template-columns:1fr}}
@@ -104,6 +105,7 @@
     </div>
   </div>
   <div style="margin-left:auto;display:flex;gap:10px;flex-wrap:wrap">
+    <span id="verBadge" class="badge info" style="cursor:pointer" title="Versie controleren…">Versie controleren…</span>
     <span id="c2paBadge" class="badge info">c2patool: controleren…</span>
     <span id="ffBadge" class="badge info">ffmpeg: …</span>
   </div>
@@ -508,6 +510,27 @@ $('input_dir').addEventListener('input',schedulePreview);
 $('recursive').addEventListener('change',schedulePreview);
 $('burn_icon').addEventListener('change',()=>{syncUI();schedulePreview();});
 
+// ---- versie-check t.o.v. GitHub ----
+async function refreshVersion(){
+  const b=$('verBadge'); if(!b) return;
+  try{
+    const v=await (await fetch('/api/version')).json();
+    if(!v.git){ b.style.display='none'; return; }
+    b.style.display='';
+    if(v.up_to_date===true){
+      b.className='badge ok'; b.textContent='Up-to-date';
+      b.title=`Versie ${v.local} — gelijk aan GitHub`+(v.subject?`\n${v.subject}`:'');
+    } else if(v.up_to_date===false){
+      b.className='badge upd'; b.textContent='Update beschikbaar';
+      b.title=`Lokaal ${v.local} · GitHub ${v.remote}\nSluit en heropen de app om bij te werken.`;
+    } else {
+      b.className='badge info'; b.textContent='GitHub niet bereikbaar';
+      b.title='Kon de versie niet controleren (offline of geen toegang).';
+    }
+  }catch(e){ b.className='badge info'; b.textContent='Versie onbekend'; b.title=''; }
+}
+$('verBadge').onclick=()=>{ const b=$('verBadge'); b.className='badge info'; b.textContent='Controleren…'; refreshVersion(); };
+
 // ---- init ----
 (async function init(){
   const r=await fetch('/api/status'); const s=await r.json();
@@ -522,6 +545,7 @@ $('burn_icon').addEventListener('change',()=>{syncUI();schedulePreview();});
   await loadIcons();
   await loadTemplates(true);
   syncUI(); doPreview();
+  refreshVersion(); setInterval(refreshVersion, 300000);
 })();
 </script>
 </body>

@@ -656,6 +656,56 @@ def status():
     }
 
 
+@app.get("/api/version")
+def api_version():
+    """Vergelijk de lokale versie met GitHub (origin/<branch>)."""
+    if not (ROOT / ".git").exists() or not which("git"):
+        return {"git": False}
+    env = {
+        **os.environ,
+        "GIT_TERMINAL_PROMPT": "0",          # nooit interactief om inlog vragen
+        "GIT_HTTP_LOW_SPEED_LIMIT": "1000",  # breek af bij trage/hangende verbinding
+        "GIT_HTTP_LOW_SPEED_TIME": "8",
+    }
+
+    def g(args, timeout=8):
+        try:
+            return subprocess.run(
+                ["git", "-C", str(ROOT), *args],
+                capture_output=True, text=True, timeout=timeout, env=env,
+            )
+        except Exception:
+            return None
+
+    local = remote = subject = when = None
+    r = g(["rev-parse", "HEAD"])
+    if r and r.returncode == 0:
+        local = r.stdout.strip()
+    r = g(["rev-parse", "--abbrev-ref", "HEAD"])
+    branch = (r.stdout.strip() if r and r.returncode == 0 else "") or "main"
+    r = g(["log", "-1", "--format=%cI\x1f%s"])
+    if r and r.returncode == 0 and r.stdout.strip():
+        parts = r.stdout.strip().split("\x1f", 1)
+        when = parts[0]
+        subject = parts[1] if len(parts) > 1 else None
+    # remote-tip ophalen (netwerkcall)
+    r = g(["ls-remote", "origin", branch], timeout=10)
+    if r and r.returncode == 0 and r.stdout.strip():
+        remote = r.stdout.split()[0]
+
+    up = (local == remote) if (local and remote) else None
+    return {
+        "git": True,
+        "branch": branch,
+        "local": local[:7] if local else None,
+        "remote": remote[:7] if remote else None,
+        "up_to_date": up,
+        "reachable": remote is not None,
+        "subject": subject,
+        "when": when,
+    }
+
+
 @app.get("/api/icons")
 def api_icons():
     icons = sorted([p.name for p in ICONS_DIR.glob("*.png")] + [p.name for p in ICONS_DIR.glob("*.PNG")])
