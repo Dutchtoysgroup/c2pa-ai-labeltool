@@ -631,6 +631,18 @@ def save_templates(items):
     TEMPLATES_FILE.write_text(json.dumps(items, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+# Deze velden zijn per-run en horen NIET in een template thuis.
+TEMPLATE_EXCLUDE_FIELDS = ("input_dir", "output_dir", "bronsoort", "ai_tool")
+
+
+def clean_template_fields(fields):
+    """Verwijder per-run-velden zodat ze nooit in een template belanden."""
+    out = dict(fields or {})
+    for k in TEMPLATE_EXCLUDE_FIELDS:
+        out.pop(k, None)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Git-synchronisatie: templates en iconen delen via de repo
 # ---------------------------------------------------------------------------
@@ -853,7 +865,7 @@ async def api_save_template(payload: dict):
     name = (payload.get("name") or "").strip()
     if not name:
         raise HTTPException(400, "Templatenaam ontbreekt.")
-    fields = payload.get("fields") or {}
+    fields = clean_template_fields(payload.get("fields") or {})
     overwrite = bool(payload.get("overwrite"))
     make_default = bool(payload.get("default"))
     items = load_templates()
@@ -879,7 +891,7 @@ async def api_update_template(name: str, payload: dict):
     idx = next((i for i, t in enumerate(items) if t.get("name") == name), None)
     if idx is None:
         raise HTTPException(404, f"Template '{name}' niet gevonden.")
-    items[idx]["fields"] = payload.get("fields") or {}
+    items[idx]["fields"] = clean_template_fields(payload.get("fields") or {})
     if "default" in payload:
         md = bool(payload["default"])
         if md:
