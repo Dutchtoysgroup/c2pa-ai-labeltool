@@ -795,6 +795,54 @@ async def upload_icon(file: UploadFile = File(...)):
     return {"ok": True, "name": name, "sync": sync}
 
 
+def _applescript_quote(text: str) -> str:
+    """Escape een string voor veilig gebruik binnen een AppleScript-literal."""
+    return '"' + str(text).replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+@app.post("/api/pick-folder")
+def api_pick_folder(payload: dict | None = None):
+    """Open een native macOS-mapkiezer (Finder) en geef het gekozen absolute
+    pad terug. Handiger dan het pad handmatig plakken. Alleen op macOS."""
+    if sys.platform != "darwin" or not which("osascript"):
+        raise HTTPException(400, "De mapkiezer werkt alleen op macOS. Plak het pad hier handmatig.")
+    prompt = "Kies een map"
+    start = ""
+    if isinstance(payload, dict):
+        prompt = (payload.get("prompt") or prompt).strip() or prompt
+        start = (payload.get("start") or "").strip()
+
+    loc = ""
+    if start:
+        sp = Path(start).expanduser()
+        if sp.is_dir():
+            loc = f" default location (POSIX file {_applescript_quote(str(sp))})"
+
+    script = (
+        f"set theFolder to choose folder with prompt {_applescript_quote(prompt)}{loc}\n"
+        "return POSIX path of theFolder"
+    )
+    try:
+        r = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True, text=True, timeout=300,
+        )
+    except Exception as e:
+        raise HTTPException(500, f"Kon de mapkiezer niet openen: {e}")
+
+    if r.returncode != 0:
+        err = (r.stderr or "").strip()
+        # -128 = gebruiker annuleerde de dialoog: geen fout, gewoon niets kiezen.
+        if "-128" in err or "cancel" in err.lower():
+            return {"ok": False, "canceled": True}
+        raise HTTPException(500, err.splitlines()[-1] if err else "Mapkiezer mislukt.")
+
+    path = r.stdout.strip()
+    if len(path) > 1:
+        path = path.rstrip("/")   # nette weergave zonder afsluitende slash
+    return {"ok": True, "path": path}
+
+
 @app.get("/api/templates")
 def api_get_templates():
     return {"templates": load_templates()}

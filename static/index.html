@@ -66,6 +66,9 @@
   .warn-box.show{display:block}
   .warn-box b{color:var(--text);font-weight:600}
   .hint{font-size:11.5px;color:var(--muted-2);margin-top:5px}
+  .path-row{display:flex;gap:8px;align-items:stretch}
+  .path-row input{flex:1;min-width:0}
+  .path-row .btn{flex:0 0 auto;white-space:nowrap}
   .preview-wrap{background:var(--card-2);border:1px solid var(--line);border-radius:14px;
     overflow:hidden;min-height:180px;display:flex;align-items:center;justify-content:center}
   .preview-wrap img{max-width:100%;display:block}
@@ -144,10 +147,16 @@
       <div class="card">
         <h2>Invoer & uitvoer</h2>
         <label class="field"><span>Mappad (invoer) — absoluut pad *</span>
-          <input type="text" id="input_dir" placeholder="/Users/merijn/…/beelden" />
+          <div class="path-row">
+            <input type="text" id="input_dir" placeholder="/Users/merijn/…/beelden" />
+            <button class="btn ghost sm" type="button" id="browseInput">Bladeren…</button>
+          </div>
         </label>
         <label class="field"><span>Uitvoermap (<code>&lt;invoer&gt;</code> = de invoermap)</span>
-          <input type="text" id="output_dir" placeholder="<invoer>/gelabeld" />
+          <div class="path-row">
+            <input type="text" id="output_dir" placeholder="<invoer>/gelabeld" />
+            <button class="btn ghost sm" type="button" id="browseOutput">Bladeren…</button>
+          </div>
           <div class="hint">Originelen worden nooit overschreven. Leeg = <code>&lt;invoer&gt;/gelabeld</code>.</div>
         </label>
         <label class="check"><input type="checkbox" id="recursive"> Ook submappen</label>
@@ -457,6 +466,21 @@ $('iconFile').onchange=async()=>{
   if(r.ok){ await loadIcons(j.name); syncMsg('Icoon geüpload.', j); schedulePreview(); }
   else toast(j.detail||'Upload mislukt.',true);
 };
+
+// ---- native mapkiezer (Finder) ----
+async function pickFolder(targetId, prompt){
+  const start = $(targetId).value.trim() || $('input_dir').value.trim() || $('output_dir').value.trim();
+  try{
+    const r=await fetch('/api/pick-folder',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({prompt, start})});
+    if(!r.ok){ const j=await r.json().catch(()=>({})); toast(j.detail||'Mapkiezer niet beschikbaar.',true); return; }
+    const j=await r.json();
+    if(j.canceled) return;              // gebruiker klikte Annuleren
+    if(j.ok && j.path){ $(targetId).value=j.path; syncUI(); schedulePreview(); }
+  }catch(e){ toast('Kon de mapkiezer niet openen.',true); }
+}
+$('browseInput').onclick=()=>pickFolder('input_dir','Kies de invoermap met beelden');
+$('browseOutput').onclick=()=>pickFolder('output_dir','Kies de uitvoermap');
 
 // ---- toast ----
 let toastT=null;
