@@ -9,7 +9,11 @@ Lokale, offline desktop-tool die per map beelden:
 Zo dek je in één stap zowel het **zichtbare label** als de **machine-leesbare
 markering** die de EU AI Act (artikel 50) voor AI-content vereist.
 
-Alles draait lokaal — er verlaat geen data je machine.
+De **beeldverwerking draait volledig lokaal**: je beelden worden op je eigen
+machine gelabeld en ondertekend en gaan naar geen enkele externe (AI-)dienst.
+Alleen je **templates en iconen** worden — als je git-toegang hebt — met de
+gedeelde repo gesynchroniseerd, en de app haalt bij het starten de nieuwste
+code van GitHub op (zie hieronder).
 
 ---
 
@@ -41,8 +45,10 @@ Applications, ook via Spotlight of Launchpad te vinden).
 1. Dubbelklik op **C2PA AI-labeltool**.
 2. De tool opent vanzelf in je browser op <http://localhost:8000>.
 
-Meer is er niet: `c2patool` zit **in de app ingebouwd** en de eerste keer regelt
-de app zelf de Python-installatie (eenmalig, internet nodig). Geen terminal.
+Meer is er niet: `c2patool` zit **in de app ingebouwd** en de eerste keer zet de
+app zelf de Python-omgeving op (virtualenv + pakketten; eenmalig, internet
+nodig). Python 3 moet wél aanwezig zijn — via de installer komt dat mee met
+Apple's ontwikkeltools. Geen terminal.
 
 > **Versie-indicator:** de header toont of je versie gelijk is aan GitHub
 > (“Up-to-date”) of dat er nieuwere code klaarstaat (“Update beschikbaar” —
@@ -196,7 +202,7 @@ sommige social platforms) **strippen C2PA-metadata vaak weg**. Daarom:
 app.py            FastAPI-backend + verwerkingslogica
 static/index.html Single-page UI (vanilla HTML/CSS/JS, geen build-stap)
 requirements.txt  Python-dependencies
-templates.json    Opgeslagen templates (start als lege lijst)
+templates.json    Opgeslagen templates — automatisch gedeeld via de repo
 icons/            Icoonbestanden (PNG met transparantie); een AI-badge wordt
                   automatisch aangemaakt als de map leeg is
 certs/test/       Meegeleverd es256 TEST-certificaat (untrusted, alleen testen)
