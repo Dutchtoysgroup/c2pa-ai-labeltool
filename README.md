@@ -41,6 +41,11 @@ Applications, ook via Spotlight of Launchpad te vinden).
 Meer is er niet: `c2patool` zit **in de app ingebouwd** en de eerste keer regelt
 de app zelf de Python-installatie (eenmalig, internet nodig). Geen terminal.
 
+> **Zelf bijwerken:** elke keer dat je de app opent, haalt hij eerst de
+> nieuwste versie van GitHub op (`Dutchtoysgroup/c2pa-ai-labeltool`) en start
+> die. GitHub is dus de bron; je Mac draait een automatisch bijgewerkte kopie.
+> Offline? Dan start hij gewoon de laatste lokale versie.
+
 > De app is een lichte “launcher” die de code in `~/c2pa-ai-tool` start. Blijft
 > de app op de achtergrond draaien; elke keer dat je 'm opent, komt de tool weer
 > in beeld.
