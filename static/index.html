@@ -84,6 +84,13 @@
   .log .fn{color:#d7dcd7;flex:0 0 auto;max-width:38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .log .ms{color:var(--muted)}
   .log .lay{color:var(--primary);margin-left:auto;flex:0 0 auto}
+  .res-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:18px 0 10px}
+  .res-head h2{margin:0}
+  .res-head .status{font-size:12px;color:var(--muted-2)}
+  .log{position:relative}
+  .log-empty{color:var(--muted-2);text-align:center;padding:34px 18px;line-height:1.65}
+  .log-empty .ic{font-size:22px;display:block;margin-bottom:8px;opacity:.7}
+  .log-empty b{color:var(--muted)}
   .summary{display:none;margin-top:14px;padding:16px;border-radius:14px;background:var(--card-2);border:1px solid var(--line)}
   .summary.show{display:block}
   .summary .nums{display:flex;gap:26px;flex-wrap:wrap;margin-bottom:8px}
@@ -257,7 +264,11 @@
   <div class="card">
     <button class="btn" id="startBtn">Start</button>
     <div class="progress"><i id="bar"></i></div>
-    <div class="log" id="log"></div>
+    <div class="res-head">
+      <h2>Resultaten</h2>
+      <span class="status" id="resStatus">Nog niet gestart</span>
+    </div>
+    <div class="log" id="log"><div class="log-empty" id="logEmpty"><span class="ic">🗂️</span>Nog geen verwerking gestart.<br>Klik op <b>Start</b> — hier verschijnt per bestand of het is <b>getekend</b>, <b>overgeslagen</b> of <b>mislukt</b>.</div></div>
     <div class="summary" id="summary">
       <div class="nums">
         <div class="n ok"><b id="sSigned">0</b> getekend</div>
@@ -467,6 +478,7 @@ $('startBtn').onclick=async()=>{
   if(!cfg.input_dir){ toast('Mappad (invoer) is verplicht.',true); return; }
   if(!cfg.ai_tool){ toast('AI-tool is verplicht.',true); return; }
   $('log').innerHTML=''; $('bar').style.width='0%'; $('summary').classList.remove('show');
+  $('resStatus').textContent='Bezig\u2026';
   $('startBtn').disabled=true; $('startBtn').textContent='Bezig…';
   let res;
   try{
@@ -499,6 +511,7 @@ function showSummary(ev){
   $('sSigned').textContent=ev.signed; $('sSkipped').textContent=ev.skipped;
   $('sErrors').textContent=ev.errors; $('sOut').textContent=ev.output;
   $('summary').classList.add('show'); $('bar').style.width='100%';
+  $('resStatus').textContent=`Klaar \u00b7 ${ev.signed} getekend, ${ev.skipped} overgeslagen, ${ev.errors} fouten`;
   toast(`Klaar: ${ev.signed} getekend, ${ev.skipped} overgeslagen, ${ev.errors} fouten.`);
 }
 function escapeHtml(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
