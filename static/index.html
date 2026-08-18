@@ -27,6 +27,8 @@
     -webkit-backdrop-filter:blur(22px) saturate(180%);position:sticky;top:0;z-index:5;}
   header h1{font-size:16px;margin:0;font-weight:600;letter-spacing:-.01em}
   header .sub{color:var(--muted);font-size:12px}
+  .brand{display:flex;align-items:center;gap:14px}
+  .brand .logo{height:36px;width:auto;display:block;flex:0 0 auto}
   .badge{font-size:12px;padding:5px 11px;border-radius:999px;border:1px solid var(--line);white-space:nowrap;background:rgba(255,255,255,.02)}
   .badge.ok{color:var(--primary);border-color:rgba(129,185,0,.35);background:rgba(129,185,0,.10)}
   .badge.err{color:var(--err);border-color:rgba(255,100,103,.35);background:rgba(255,100,103,.10)}
@@ -94,9 +96,12 @@
 </head>
 <body>
 <header>
-  <div>
-    <h1>EXIT Toys · C2PA AI-labeltool</h1>
-    <div class="sub">Zichtbaar AI-icoon inbranden + machine-leesbare C2PA-herkomst (EU AI Act art. 50)</div>
+  <div class="brand">
+    <img class="logo" src="/static/exit-logo.png" alt="EXIT Toys" />
+    <div>
+      <h1>C2PA AI-labeltool</h1>
+      <div class="sub">Zichtbaar AI-icoon inbranden + machine-leesbare C2PA-herkomst (EU AI Act art. 50)</div>
+    </div>
   </div>
   <div style="margin-left:auto;display:flex;gap:10px;flex-wrap:wrap">
     <span id="c2paBadge" class="badge info">c2patool: controleren…</span>
