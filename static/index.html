@@ -422,7 +422,7 @@ $('tplSave').onclick=async()=>{
   if(exists && !confirm(`Template “${name}” bestaat al. Overschrijven?`)) return;
   const r=await fetch('/api/templates',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({name, overwrite:exists, default:$('tplDefault').checked, fields:collectConfig(false)})});
-  if(r.ok){ await loadTemplates(); $('tplSelect').value=name; toast('Template opgeslagen.'); }
+  if(r.ok){ const j=await r.json().catch(()=>({})); await loadTemplates(); $('tplSelect').value=name; syncMsg('Template opgeslagen.', j); }
   else toast('Opslaan mislukt.',true);
 };
 $('tplUpdate').onclick=async()=>{
@@ -430,7 +430,7 @@ $('tplUpdate').onclick=async()=>{
   if(!name || !TEMPLATES.some(t=>t.name===name)){ alert('Selecteer eerst een bestaande template om bij te werken.'); return; }
   const r=await fetch('/api/templates/'+encodeURIComponent(name),{method:'PUT',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({default:$('tplDefault').checked, fields:collectConfig(false)})});
-  if(r.ok){ await loadTemplates(); $('tplSelect').value=name; toast('Template bijgewerkt.'); }
+  if(r.ok){ const j=await r.json().catch(()=>({})); await loadTemplates(); $('tplSelect').value=name; syncMsg('Template bijgewerkt.', j); }
   else toast('Bijwerken mislukt.',true);
 };
 $('tplDelete').onclick=async()=>{
@@ -438,7 +438,7 @@ $('tplDelete').onclick=async()=>{
   if(!name){ alert('Selecteer eerst een template om te verwijderen.'); return; }
   if(!confirm(`Template “${name}” verwijderen?`)) return;
   const r=await fetch('/api/templates/'+encodeURIComponent(name),{method:'DELETE'});
-  if(r.ok){ await loadTemplates(); $('tplName').value=''; toast('Template verwijderd.'); }
+  if(r.ok){ const j=await r.json().catch(()=>({})); await loadTemplates(); $('tplName').value=''; syncMsg('Template verwijderd.', j); }
 };
 
 // ---- icons ----
@@ -454,7 +454,7 @@ $('iconFile').onchange=async()=>{
   const f=$('iconFile').files[0]; if(!f) return;
   const fd=new FormData(); fd.append('file',f);
   const r=await fetch('/api/icons',{method:'POST',body:fd}); const j=await r.json();
-  if(r.ok){ await loadIcons(j.name); toast('Icoon geüpload.'); schedulePreview(); }
+  if(r.ok){ await loadIcons(j.name); syncMsg('Icoon geüpload.', j); schedulePreview(); }
   else toast(j.detail||'Upload mislukt.',true);
 };
 
@@ -469,6 +469,12 @@ function toast(msg,err=false){
   el.style.background=err?'rgba(255,100,103,.14)':'rgba(129,185,0,.14)'; el.style.color=err?'#ffb1b3':'#cdeaa0';
   el.style.border='1px solid '+(err?'rgba(255,100,103,.4)':'rgba(129,185,0,.4)'); el.style.backdropFilter='blur(10px)'; el.textContent=msg;
   el.style.opacity='1'; clearTimeout(toastT); toastT=setTimeout(()=>el.style.opacity='0',2600);
+}
+function syncMsg(base, j){
+  const sy = j && j.sync;
+  if(!sy){ toast(base); return; }
+  if(sy.pushed){ toast(base+' \u2013 gedeeld via GitHub \u2713'); }
+  else { toast((base+' '+(sy.message||'Nog niet gedeeld via GitHub.')).trim(), true); }
 }
 
 // ---- processing ----

@@ -632,6 +632,73 @@ def save_templates(items):
 
 
 # ---------------------------------------------------------------------------
+# Git-synchronisatie: templates en iconen delen via de repo
+# ---------------------------------------------------------------------------
+
+
+def _git_env():
+    return {
+        **os.environ,
+        "GIT_TERMINAL_PROMPT": "0",          # nooit interactief om inlog vragen
+        "GIT_HTTP_LOW_SPEED_LIMIT": "1000",  # breek af bij trage/hangende verbinding
+        "GIT_HTTP_LOW_SPEED_TIME": "20",
+    }
+
+
+def _git(args, timeout=30):
+    try:
+        return subprocess.run(
+            ["git", "-C", str(ROOT), *args],
+            capture_output=True, text=True, timeout=timeout, env=_git_env(),
+        )
+    except Exception:
+        return None
+
+
+def git_sync(paths, message):
+    """Commit de opgegeven paden en push ze naar origin, zodat templates en
+    iconen voor iedereen beschikbaar zijn. Faalt nooit hard: de lokale
+    wijziging blijft altijd bewaard. Retourneert status voor de UI."""
+    res = {"synced": False, "pushed": False, "message": ""}
+    if not (ROOT / ".git").exists() or not which("git"):
+        res["message"] = "Geen git-repo — alleen lokaal opgeslagen."
+        return res
+
+    r = _git(["rev-parse", "--abbrev-ref", "HEAD"])
+    branch = (r.stdout.strip() if r and r.returncode == 0 else "") or "main"
+
+    _git(["add", "--", *[str(x) for x in paths]])
+
+    # Alleen committen als er daadwerkelijk iets gewijzigd is t.o.v. HEAD.
+    staged = _git(["diff", "--cached", "--quiet"])
+    if staged is not None and staged.returncode != 0:
+        _git(["commit", "-m", message])
+    res["synced"] = True
+
+    # Eerst remote-wijzigingen ophalen en erbovenop rebasen, zodat een
+    # gelijktijdige wijziging van een collega niet tot een geweigerde push leidt.
+    pull = _git(["pull", "--rebase", "--autostash", "origin", branch])
+    if pull is not None and pull.returncode != 0:
+        _git(["rebase", "--abort"])
+        res["message"] = ("Lokaal opgeslagen. Automatisch samenvoegen met GitHub "
+                          "mislukt (conflict) \u2014 deel handmatig.")
+        return res
+
+    push = _git(["push", "origin", branch])
+    if push is not None and push.returncode == 0:
+        res["pushed"] = True
+        res["message"] = "Opgeslagen en gedeeld via GitHub."
+    else:
+        last = ""
+        if push and push.stderr:
+            lines = [l for l in push.stderr.splitlines() if l.strip()]
+            last = lines[-1][:200] if lines else ""
+        res["message"] = ("Lokaal opgeslagen; push naar GitHub mislukt"
+                          + (f": {last}" if last else "."))
+    return res
+
+
+# ---------------------------------------------------------------------------
 # FastAPI app
 # ---------------------------------------------------------------------------
 
@@ -724,7 +791,8 @@ async def upload_icon(file: UploadFile = File(...)):
         raise HTTPException(400, "Ongeldig PNG-bestand.")
     dest = ICONS_DIR / name
     dest.write_bytes(data)
-    return {"ok": True, "name": name}
+    sync = git_sync([f"icons/{name}"], f"Icoon toevoegen/bijwerken: {name}")
+    return {"ok": True, "name": name, "sync": sync}
 
 
 @app.get("/api/templates")
@@ -753,7 +821,8 @@ async def api_save_template(payload: dict):
         for t in items:
             t["default"] = t.get("name") == name
     save_templates(items)
-    return {"ok": True, "templates": items}
+    sync = git_sync(["templates.json"], f"Template opslaan: {name}")
+    return {"ok": True, "templates": items, "sync": sync}
 
 
 @app.put("/api/templates/{name}")
@@ -771,7 +840,8 @@ async def api_update_template(name: str, payload: dict):
         else:
             items[idx]["default"] = False
     save_templates(items)
-    return {"ok": True, "templates": items}
+    sync = git_sync(["templates.json"], f"Template bijwerken: {name}")
+    return {"ok": True, "templates": items, "sync": sync}
 
 
 @app.delete("/api/templates/{name}")
@@ -781,7 +851,8 @@ def api_delete_template(name: str):
     if len(new) == len(items):
         raise HTTPException(404, f"Template '{name}' niet gevonden.")
     save_templates(new)
-    return {"ok": True, "templates": new}
+    sync = git_sync(["templates.json"], f"Template verwijderen: {name}")
+    return {"ok": True, "templates": new, "sync": sync}
 
 
 @app.post("/api/preview")
