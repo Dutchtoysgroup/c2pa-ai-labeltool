@@ -1,7 +1,7 @@
 [
   {
     "name": "EXIT Toys - Standaard Ai",
-    "default": false,
+    "default": true,
     "fields": {
       "recursive": false,
       "model": "",
