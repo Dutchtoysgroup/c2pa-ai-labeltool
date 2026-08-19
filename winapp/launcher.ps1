@@ -19,8 +19,15 @@ function LogLine($m) {
 }
 
 function Test-Server {
-  try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 "$Url/api/status" | Out-Null; return $true }
-  catch { return $false }
+  # Snelle, betrouwbare check: luistert er iets op poort 8000? (Invoke-WebRequest
+  # is op Windows PowerShell 5.1 traag/onbetrouwbaar en gaf valse negatieven.)
+  try {
+    $client = New-Object System.Net.Sockets.TcpClient
+    $iar = $client.BeginConnect("127.0.0.1", 8000, $null, $null)
+    $connected = $iar.AsyncWaitHandle.WaitOne(1000)
+    if ($connected -and $client.Connected) { $client.Close(); return $true }
+    $client.Close(); return $false
+  } catch { return $false }
 }
 
 # Open de standaardbrowser op de tool. explorer.exe is de betrouwbaarste route
