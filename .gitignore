@@ -10,3 +10,6 @@ __pycache__/
 _sample/
 _tools/
 */gelabeld/
+
+# Windows: meegebundelde c2patool.exe (wordt bij de build gedownload)
+bin/

@@ -17,7 +17,7 @@ code van GitHub op (zie hieronder).
 
 ---
 
-## Installatie — zo krijg je de app
+## Installatie op macOS — zo krijg je de app
 
 **Dit is de standaardmanier om de app te installeren.** Je hebt toegang tot deze
 repo nodig (`Dutchtoysgroup/c2pa-ai-labeltool`) — vraag de beheerder of je bent
@@ -74,6 +74,36 @@ bash ~/c2pa-ai-tool/macapp/build_mac_app.sh
 Dat zet `C2PA AI-labeltool.app` in `/Applications` (of `~/Applications`) met
 `c2patool` meegebundeld.
 
+## Installatie op Windows 11 — zo krijg je de app
+
+Op Windows draait de tool **exact hetzelfde** (dezelfde interface in de browser).
+Je hebt toegang tot de repo nodig (`Dutchtoysgroup/c2pa-ai-labeltool`).
+
+1. Pak **`install.bat`** én **`install.ps1`** (download ze uit deze repo, of
+   ontvang `Installeer C2PA AI-labeltool (Windows).zip` van de beheerder en pak
+   het uit — houd beide bestanden in dezelfde map).
+2. **Dubbelklik op `install.bat`**. Er opent een venster dat alles regelt.
+3. **Log één keer in bij GitHub** in de browser (opent vanzelf).
+4. Klaar. De app staat voortaan in het **Startmenu** en op het **bureaublad**;
+   dubbelklik erop om te starten. Vanaf dan werkt hij zichzelf bij vanaf GitHub.
+
+De installer regelt de rest zelf via **winget**: git, Python 3, het
+GitHub-hulpje (`gh`) en `c2patool`. (winget/“App Installer” zit standaard op
+Windows 11; ontbreekt het, installeer dan **App Installer** uit de Microsoft
+Store en start de installer opnieuw.)
+
+> **Openen:** dubbelklik op **C2PA AI-labeltool** (Startmenu of bureaublad). De
+> tool opent vanzelf op <http://localhost:8000> en werkt precies als op macOS —
+> ook hier haalt de app bij elke start de nieuwste versie van GitHub op.
+
+> **App opnieuw bouwen / snelkoppelingen herstellen** (bv. na verplaatsen):
+> ```powershell
+> powershell -ExecutionPolicy Bypass -File $HOME\c2pa-ai-tool\winapp\build_win_app.ps1
+> ```
+
+> **Beheerder:** deel `install.bat` + `install.ps1` samen als **.zip** met
+> collega's en zorg dat ze toegang tot de repo hebben.
+
 ## Handmatige installatie (gevorderd)
 
 Liever zonder de installer? Op een Mac met git + Python 3:
@@ -85,6 +115,13 @@ bash macapp/build_mac_app.sh
 ```
 
 Dat bouwt dezelfde app (met `c2patool` automatisch meegedownload).
+
+Op **Windows** (PowerShell):
+
+```powershell
+git clone https://github.com/Dutchtoysgroup/c2pa-ai-labeltool.git $HOME\c2pa-ai-tool
+powershell -ExecutionPolicy Bypass -File $HOME\c2pa-ai-tool\winapp\build_win_app.ps1
+```
 
 ## Starten via de terminal (alternatief / andere platforms)
 
@@ -114,7 +151,9 @@ cargo install c2patool
 
 **Optie B — kant-en-klare binary:** download de nieuwste release voor jouw
 platform van <https://github.com/contentauth/c2pa-rs> (map `c2patool`) en zet het
-binary in een map die op je `PATH` staat (bv. `/usr/local/bin`).
+binary in een map die op je `PATH` staat. Op macOS bv. `/usr/local/bin`; op
+Windows het bestand `c2patool.exe` (uit `…-x86_64-pc-windows-msvc.zip`) in een
+PATH-map — of gebruik gewoon de installer hierboven, die dit automatisch doet.
 
 Controleer: `c2patool --version`.
 
@@ -140,9 +179,9 @@ Installeer op macOS met `brew install ffmpeg`.
   pushen niet (bijv. offline of geen push-rechten), dan blijft de wijziging in
   elk geval lokaal bewaard.
 - **Invoer** → kies wat je verwerkt:
-  - **Map…** opent een Finder-mapkiezer (of plak een absoluut pad); de hele map
+  - **Map…** opent een mapkiezer (Finder op macOS, Verkenner op Windows), of plak een absoluut pad; de hele map
     wordt verwerkt (met *Ook submappen* eventueel recursief).
-  - **Bestanden…** opent een Finder-bestandskiezer waarmee je één of meer losse
+  - **Bestanden…** opent een bestandskiezer (Finder/Verkenner) waarmee je één of meer losse
     beelden selecteert — dan worden **alléén die bestanden** verwerkt. De
     invoermap wordt afgeleid van de map van het eerste bestand.
 - **Uitvoermap** → standaard `<invoer>/gelabeld`; originelen worden dan nooit
@@ -223,7 +262,11 @@ templates.json    Opgeslagen templates — automatisch gedeeld via de repo
 icons/            Icoonbestanden (PNG met transparantie); een AI-badge wordt
                   automatisch aangemaakt als de map leeg is
 certs/test/       Meegeleverd es256 TEST-certificaat (untrusted, alleen testen)
-macapp/           Bouwscript + launcher + icoon voor de dubbelklik-macOS-app
+macapp/           macOS: bouwscript + launcher + icoon voor de dubbelklik-app
+winapp/           Windows: launcher + bouwscript (snelkoppelingen + c2patool.exe)
+install.command   macOS-installer (git/gh/clone/build)
+install.bat       Windows-installer (dubbelklik) -> roept install.ps1 aan
+install.ps1       Windows-installer (winget/gh/clone/build)
 ```
 
 ## Ondersteunde bestandstypen

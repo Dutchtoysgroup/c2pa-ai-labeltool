@@ -845,93 +845,181 @@ def _applescript_quote(text: str) -> str:
     return '"' + str(text).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def _powershell_quote(text: str) -> str:
+    """Escape een string voor gebruik binnen een enkel-aangehaalde PowerShell-literal."""
+    return "'" + str(text).replace("'", "''") + "'"
+
+
+def _run_powershell(script: str, timeout: int = 300):
+    """Voer een PowerShell-script (Windows) uit vanuit een tijdelijk .ps1-bestand.
+    Draait in STA-modus, nodig voor Windows Forms-dialogen."""
+    exe = which("powershell") or which("pwsh") or "powershell"
+    fd, tmp = tempfile.mkstemp(suffix=".ps1")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8-sig") as fh:  # BOM: Windows PowerShell 5.1 leest zo UTF-8 correct
+            fh.write(script)
+        return subprocess.run(
+            [exe, "-NoProfile", "-ExecutionPolicy", "Bypass", "-STA", "-File", tmp],
+            capture_output=True, text=True, timeout=timeout,
+        )
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+
+
 @app.post("/api/pick-folder")
 def api_pick_folder(payload: dict | None = None):
-    """Open een native macOS-mapkiezer (Finder) en geef het gekozen absolute
-    pad terug. Handiger dan het pad handmatig plakken. Alleen op macOS."""
-    if sys.platform != "darwin" or not which("osascript"):
-        raise HTTPException(400, "De mapkiezer werkt alleen op macOS. Plak het pad hier handmatig.")
+    """Open een native mapkiezer (Finder op macOS, Verkenner op Windows) en geef
+    het gekozen absolute pad terug. Handiger dan het pad handmatig plakken."""
     prompt = "Kies een map"
     start = ""
     if isinstance(payload, dict):
         prompt = (payload.get("prompt") or prompt).strip() or prompt
         start = (payload.get("start") or "").strip()
 
-    loc = ""
-    if start:
-        sp = Path(start).expanduser()
-        if sp.is_dir():
-            loc = f" default location (POSIX file {_applescript_quote(str(sp))})"
-
-    script = (
-        f"set theFolder to choose folder with prompt {_applescript_quote(prompt)}{loc}\n"
-        "return POSIX path of theFolder"
-    )
-    try:
-        r = subprocess.run(
-            ["osascript", "-e", script],
-            capture_output=True, text=True, timeout=300,
+    # ----- macOS (AppleScript) -----
+    if sys.platform == "darwin" and which("osascript"):
+        loc = ""
+        if start:
+            sp = Path(start).expanduser()
+            if sp.is_dir():
+                loc = f" default location (POSIX file {_applescript_quote(str(sp))})"
+        script = (
+            f"set theFolder to choose folder with prompt {_applescript_quote(prompt)}{loc}\n"
+            "return POSIX path of theFolder"
         )
-    except Exception as e:
-        raise HTTPException(500, f"Kon de mapkiezer niet openen: {e}")
+        try:
+            r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=300)
+        except Exception as e:
+            raise HTTPException(500, f"Kon de mapkiezer niet openen: {e}")
+        if r.returncode != 0:
+            err = (r.stderr or "").strip()
+            if "-128" in err or "cancel" in err.lower():
+                return {"ok": False, "canceled": True}
+            raise HTTPException(500, err.splitlines()[-1] if err else "Mapkiezer mislukt.")
+        path = r.stdout.strip()
+        if len(path) > 1:
+            path = path.rstrip("/")
+        return {"ok": True, "path": path}
 
-    if r.returncode != 0:
-        err = (r.stderr or "").strip()
-        # -128 = gebruiker annuleerde de dialoog: geen fout, gewoon niets kiezen.
-        if "-128" in err or "cancel" in err.lower():
+    # ----- Windows (PowerShell / Windows Forms) -----
+    if sys.platform == "win32":
+        selline = ""
+        if start:
+            sp = Path(start).expanduser()
+            if sp.is_dir():
+                selline = f"$dlg.SelectedPath = {_powershell_quote(str(sp))}\n"
+        script = (
+            "Add-Type -AssemblyName System.Windows.Forms | Out-Null\n"
+            "$dlg = New-Object System.Windows.Forms.FolderBrowserDialog\n"
+            f"$dlg.Description = {_powershell_quote(prompt)}\n"
+            "$dlg.ShowNewFolderButton = $true\n"
+            f"{selline}"
+            "$top = New-Object System.Windows.Forms.Form\n"
+            "$top.TopMost = $true\n"
+            "$res = $dlg.ShowDialog($top)\n"
+            "if ($res -eq [System.Windows.Forms.DialogResult]::OK) "
+            "{ [Console]::Out.Write($dlg.SelectedPath) } else { exit 2 }\n"
+        )
+        try:
+            r = _run_powershell(script)
+        except Exception as e:
+            raise HTTPException(500, f"Kon de mapkiezer niet openen: {e}")
+        if r.returncode == 2:
             return {"ok": False, "canceled": True}
-        raise HTTPException(500, err.splitlines()[-1] if err else "Mapkiezer mislukt.")
+        if r.returncode != 0:
+            err = (r.stderr or "").strip()
+            raise HTTPException(500, err.splitlines()[-1] if err else "Mapkiezer mislukt.")
+        path = (r.stdout or "").strip()
+        if not path:
+            return {"ok": False, "canceled": True}
+        return {"ok": True, "path": path}
 
-    path = r.stdout.strip()
-    if len(path) > 1:
-        path = path.rstrip("/")   # nette weergave zonder afsluitende slash
-    return {"ok": True, "path": path}
+    raise HTTPException(400, "De mapkiezer werkt op macOS en Windows. Plak het pad hier anders handmatig.")
 
 
 @app.post("/api/pick-files")
 def api_pick_files(payload: dict | None = None):
-    """Open een native macOS-bestandskiezer (Finder) met meervoudige selectie en
-    geef de gekozen absolute paden terug. Zo kun je losse beelden i.p.v. een hele
-    map verwerken. Alleen op macOS."""
-    if sys.platform != "darwin" or not which("osascript"):
-        raise HTTPException(400, "De bestandskiezer werkt alleen op macOS. Gebruik anders een hele map.")
-    prompt = "Kies \u00e9\u00e9n of meer beelden"
+    """Open een native bestandskiezer met meervoudige selectie (Finder op macOS,
+    Verkenner op Windows) en geef de gekozen absolute paden terug. Zo kun je losse
+    beelden i.p.v. een hele map verwerken."""
+    prompt = "Kies één of meer beelden"
     start = ""
     if isinstance(payload, dict):
         prompt = (payload.get("prompt") or prompt).strip() or prompt
         start = (payload.get("start") or "").strip()
 
-    loc = ""
-    if start:
-        sp = Path(start).expanduser()
-        base = sp if sp.is_dir() else sp.parent
-        if base.is_dir():
-            loc = f" default location (POSIX file {_applescript_quote(str(base))})"
+    # ----- macOS (AppleScript) -----
+    if sys.platform == "darwin" and which("osascript"):
+        loc = ""
+        if start:
+            sp = Path(start).expanduser()
+            base = sp if sp.is_dir() else sp.parent
+            if base.is_dir():
+                loc = f" default location (POSIX file {_applescript_quote(str(base))})"
+        exts = "{" + ", ".join(_applescript_quote(e.lstrip(".")) for e in sorted(SUPPORTED_EXT)) + "}"
+        script = (
+            f"set theFiles to choose file with prompt {_applescript_quote(prompt)} "
+            f"of type {exts} with multiple selections allowed{loc}\n"
+            "set AppleScript's text item delimiters to linefeed\n"
+            "set out to \"\"\n"
+            "repeat with f in theFiles\n"
+            "  set out to out & POSIX path of f & linefeed\n"
+            "end repeat\n"
+            "return out"
+        )
+        try:
+            r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=300)
+        except Exception as e:
+            raise HTTPException(500, f"Kon de bestandskiezer niet openen: {e}")
+        if r.returncode != 0:
+            err = (r.stderr or "").strip()
+            if "-128" in err or "cancel" in err.lower():
+                return {"ok": False, "canceled": True}
+            raise HTTPException(500, err.splitlines()[-1] if err else "Bestandskiezer mislukt.")
+        paths = [ln.strip() for ln in (r.stdout or "").splitlines() if ln.strip()]
+        return {"ok": True, "paths": paths}
 
-    exts = "{" + ", ".join(_applescript_quote(e.lstrip(".")) for e in sorted(SUPPORTED_EXT)) + "}"
-    script = (
-        f"set theFiles to choose file with prompt {_applescript_quote(prompt)} "
-        f"of type {exts} with multiple selections allowed{loc}\n"
-        "set AppleScript's text item delimiters to linefeed\n"
-        "set out to \"\"\n"
-        "repeat with f in theFiles\n"
-        "  set out to out & POSIX path of f & linefeed\n"
-        "end repeat\n"
-        "return out"
-    )
-    try:
-        r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=300)
-    except Exception as e:
-        raise HTTPException(500, f"Kon de bestandskiezer niet openen: {e}")
-
-    if r.returncode != 0:
-        err = (r.stderr or "").strip()
-        if "-128" in err or "cancel" in err.lower():
+    # ----- Windows (PowerShell / Windows Forms) -----
+    if sys.platform == "win32":
+        initline = ""
+        if start:
+            sp = Path(start).expanduser()
+            base = sp if sp.is_dir() else sp.parent
+            if base.is_dir():
+                initline = f"$dlg.InitialDirectory = {_powershell_quote(str(base))}\n"
+        pattern = ";".join("*" + e for e in sorted(SUPPORTED_EXT))
+        filt = f"Beelden en video|{pattern}|Alle bestanden (*.*)|*.*"
+        script = (
+            "Add-Type -AssemblyName System.Windows.Forms | Out-Null\n"
+            "$dlg = New-Object System.Windows.Forms.OpenFileDialog\n"
+            "$dlg.Multiselect = $true\n"
+            f"$dlg.Title = {_powershell_quote(prompt)}\n"
+            f"$dlg.Filter = {_powershell_quote(filt)}\n"
+            f"{initline}"
+            "$top = New-Object System.Windows.Forms.Form\n"
+            "$top.TopMost = $true\n"
+            "$res = $dlg.ShowDialog($top)\n"
+            "if ($res -eq [System.Windows.Forms.DialogResult]::OK) "
+            "{ [Console]::Out.Write([string]::Join([char]10, $dlg.FileNames)) } else { exit 2 }\n"
+        )
+        try:
+            r = _run_powershell(script)
+        except Exception as e:
+            raise HTTPException(500, f"Kon de bestandskiezer niet openen: {e}")
+        if r.returncode == 2:
             return {"ok": False, "canceled": True}
-        raise HTTPException(500, err.splitlines()[-1] if err else "Bestandskiezer mislukt.")
+        if r.returncode != 0:
+            err = (r.stderr or "").strip()
+            raise HTTPException(500, err.splitlines()[-1] if err else "Bestandskiezer mislukt.")
+        paths = [ln.strip() for ln in (r.stdout or "").splitlines() if ln.strip()]
+        if not paths:
+            return {"ok": False, "canceled": True}
+        return {"ok": True, "paths": paths}
 
-    paths = [ln.strip() for ln in (r.stdout or "").splitlines() if ln.strip()]
-    return {"ok": True, "paths": paths}
+    raise HTTPException(400, "De bestandskiezer werkt op macOS en Windows. Gebruik anders een hele map.")
 
 
 @app.get("/api/templates")
