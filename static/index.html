@@ -171,6 +171,8 @@
           <div class="hint">Originelen worden nooit overschreven. Leeg = <code>&lt;invoer&gt;/gelabeld</code>.</div>
         </label>
         <label class="check"><input type="checkbox" id="recursive"> Ook submappen</label>
+        <label class="check"><input type="checkbox" id="replace_originals"> Originelen vervangen (schrijf terug over de bestanden zelf)</label>
+        <div class="warn-box" id="replaceWarn"><b>Let op — onomkeerbaar.</b> De originele bestanden worden <b>overschreven</b> door de gelabelde + ondertekende versie; er wordt geen kopie bewaard en de uitvoermap wordt genegeerd. Maak vooraf een back-up als je de originelen wilt behouden. Bij Start vragen we nog een expliciete bevestiging.</div>
       </div>
 
       <div class="card">
@@ -295,7 +297,7 @@
         <div class="n sk"><b id="sSkipped">0</b> overgeslagen</div>
         <div class="n er"><b id="sErrors">0</b> fouten</div>
       </div>
-      <div class="file-hint">Uitvoermap: <span id="sOut"></span></div>
+      <div class="file-hint"><span id="sOutLabel">Uitvoermap:</span> <span id="sOut"></span></div>
     </div>
   </div>
 </main>
@@ -330,6 +332,7 @@ function collectConfig(includeInput=true){
     input_dir: includeInput ? $('input_dir').value.trim() : '',
     output_dir: $('output_dir').value.trim(),
     recursive: $('recursive').checked,
+    replace_originals: $('replace_originals').checked,
     bronsoort: $('bronsoort').value,
     ai_tool: $('ai_tool').value.trim(),
     model: $('model').value.trim(),
@@ -399,6 +402,11 @@ function syncUI(){
   $('testWarn').classList.toggle('show', testOn || noCert);
   $('labelSettings').style.opacity = $('burn_icon').checked ? '1':'.45';
   $('labelSettings').style.pointerEvents = $('burn_icon').checked ? 'auto':'none';
+  const rep = $('replace_originals').checked;
+  $('replaceWarn').classList.toggle('show', rep);
+  $('output_dir').disabled = rep;
+  $('browseOutput').disabled = rep;
+  $('output_dir').style.opacity = rep ? '.45' : '1';
   $('startBtn').disabled = !C2PA_OK;
   $('startBtn').textContent = C2PA_OK ? 'Start' : 'Start (c2patool ontbreekt)';
 }
@@ -523,6 +531,15 @@ $('startBtn').onclick=async()=>{
   const cfg=collectConfig(true);
   if(!cfg.input_dir){ toast('Mappad (invoer) is verplicht.',true); return; }
   if(!cfg.ai_tool){ toast('AI-tool is verplicht.',true); return; }
+  if(cfg.replace_originals){
+    const ok = confirm(
+      'Originelen vervangen — weet je het zeker?\n\n'+
+      'De originele bestanden in de invoermap worden OVERSCHREVEN door de gelabelde '+
+      '+ ondertekende versie. Dit kan niet ongedaan worden gemaakt en er wordt geen '+
+      'kopie bewaard.\n\nKlik op OK om door te gaan met vervangen, of Annuleren om te stoppen.');
+    if(!ok){ toast('Geannuleerd — originelen niet vervangen.'); return; }
+    cfg.confirm_replace = true;
+  }
   $('log').innerHTML=''; $('bar').style.width='0%'; $('summary').classList.remove('show');
   $('resStatus').textContent='Bezig\u2026';
   $('startBtn').disabled=true; $('startBtn').textContent='Bezig…';
@@ -556,6 +573,7 @@ function addLog(status,file,msg,layers){
 function showSummary(ev){
   $('sSigned').textContent=ev.signed; $('sSkipped').textContent=ev.skipped;
   $('sErrors').textContent=ev.errors; $('sOut').textContent=ev.output;
+  $('sOutLabel').textContent = ev.replace ? 'Originelen vervangen in:' : 'Uitvoermap:';
   $('summary').classList.add('show'); $('bar').style.width='100%';
   $('resStatus').textContent=`Klaar \u00b7 ${ev.signed} getekend, ${ev.skipped} overgeslagen, ${ev.errors} fouten`;
   toast(`Klaar: ${ev.signed} getekend, ${ev.skipped} overgeslagen, ${ev.errors} fouten.`);
@@ -564,6 +582,7 @@ function escapeHtml(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&l
 
 // ---- listeners ----
 ['use_test_cert','cert_path','key_path','burn_icon'].forEach(id=>$(id).addEventListener('input',syncUI));
+$('replace_originals').addEventListener('change',syncUI);
 Object.values(LABEL_IDS).forEach(id=>{ $(id).addEventListener('input',()=>{syncUI();schedulePreview();}); });
 $('input_dir').addEventListener('input',schedulePreview);
 $('recursive').addEventListener('change',schedulePreview);

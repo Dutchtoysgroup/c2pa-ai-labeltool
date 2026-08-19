@@ -502,16 +502,21 @@ def process_batch(job_id: str, cfg: dict):
             emit({"type": "done"})
             return
 
-        out_pattern = cfg.get("output_dir", "").strip()
-        if not out_pattern:
-            out_dir = in_dir / "gelabeld"
+        replace_originals = bool(cfg.get("replace_originals"))
+        if replace_originals:
+            out_dir = None
         else:
-            out_dir = Path(out_pattern.replace("<invoer>", str(in_dir))).expanduser()
-        out_dir.mkdir(parents=True, exist_ok=True)
+            out_pattern = cfg.get("output_dir", "").strip()
+            if not out_pattern:
+                out_dir = in_dir / "gelabeld"
+            else:
+                out_dir = Path(out_pattern.replace("<invoer>", str(in_dir))).expanduser()
+            out_dir.mkdir(parents=True, exist_ok=True)
 
         all_files = collect_files(in_dir, cfg.get("recursive", False))
         # negeer bestanden die al in de uitvoermap staan
-        all_files = [f for f in all_files if out_dir not in f.parents and f.parent != out_dir]
+        if out_dir is not None:
+            all_files = [f for f in all_files if out_dir not in f.parents and f.parent != out_dir]
         work = [f for f in all_files if f.suffix.lower() in SUPPORTED_EXT]
         skipped_unsupported = [f for f in all_files if f.suffix.lower() not in SUPPORTED_EXT]
 
@@ -521,7 +526,8 @@ def process_batch(job_id: str, cfg: dict):
             emit({"type": "done"})
             return
 
-        emit({"type": "start", "total": total, "output": str(out_dir)})
+        out_label = "originelen worden vervangen" if replace_originals else str(out_dir)
+        emit({"type": "start", "total": total, "output": out_label, "replace": replace_originals})
 
         manifest = build_manifest(cfg)
         do_visible = cfg.get("burn_icon", True)
@@ -544,7 +550,12 @@ def process_batch(job_id: str, cfg: dict):
         try:
             for f in work:
                 ext = f.suffix.lower()
-                out_file = out_dir / f.name
+                if replace_originals:
+                    # temp met leidende punt (wordt genegeerd door collect_files)
+                    # én de originele extensie, zodat c2patool het formaat herkent.
+                    out_file = f.parent / f".c2patmp_{f.name}"
+                else:
+                    out_file = out_dir / f.name
                 layers = []
                 try:
                     working = f  # bron voor de C2PA-stap
@@ -580,16 +591,32 @@ def process_batch(job_id: str, cfg: dict):
                     if do_verify:
                         vok, vmsg = verify_with_c2patool(out_file, expected_dst)
                         if not vok:
+                            if replace_originals and out_file.exists():
+                                out_file.unlink()
                             log("FOUT", f.name, f"verificatie: {vmsg}", " + ".join(layers))
                             n_error += 1
                             processed += 1
                             emit({"type": "progress", "done": processed, "total": total})
                             continue
 
+                    # In vervang-modus: atomair over het origineel heen zetten
+                    # (zelfde map → os.replace is atomair). Pas ná een geslaagde
+                    # (en evt. geverifieerde) ondertekening.
+                    if replace_originals:
+                        os.replace(out_file, f)
+
                     lay = " + ".join(layers) if layers else "-"
-                    log("OK", f.name, "getekend" + (" + geverifieerd" if do_verify else ""), lay)
+                    msg_ok = "getekend" + (" + geverifieerd" if do_verify else "")
+                    if replace_originals:
+                        msg_ok += " \u2192 origineel vervangen"
+                    log("OK", f.name, msg_ok, lay)
                     n_signed += 1
                 except Exception as e:  # noqa: BLE001
+                    if replace_originals and out_file.exists():
+                        try:
+                            out_file.unlink()
+                        except OSError:
+                            pass
                     log("FOUT", f.name, str(e), " + ".join(layers))
                     n_error += 1
                 processed += 1
@@ -603,7 +630,8 @@ def process_batch(job_id: str, cfg: dict):
                 "signed": n_signed,
                 "skipped": n_skipped,
                 "errors": n_error,
-                "output": str(out_dir),
+                "output": (str(in_dir) if replace_originals else str(out_dir)),
+                "replace": replace_originals,
             }
         )
     except Exception as e:  # noqa: BLE001
@@ -632,7 +660,7 @@ def save_templates(items):
 
 
 # Deze velden zijn per-run en horen NIET in een template thuis.
-TEMPLATE_EXCLUDE_FIELDS = ("input_dir", "output_dir", "bronsoort", "ai_tool")
+TEMPLATE_EXCLUDE_FIELDS = ("input_dir", "output_dir", "bronsoort", "ai_tool", "replace_originals", "confirm_replace")
 
 
 def clean_template_fields(fields):
@@ -988,6 +1016,8 @@ async def api_process(cfg: dict):
         raise HTTPException(400, "Mappad (invoer) is verplicht.")
     if not Path(input_dir).expanduser().is_dir():
         raise HTTPException(400, f"Invoermap bestaat niet: {input_dir}")
+    if cfg.get("replace_originals") and not cfg.get("confirm_replace"):
+        raise HTTPException(400, "Vervangen van originelen is niet bevestigd.")
     if cfg.get("bronsoort") not in DIGITAL_SOURCE_TYPES:
         raise HTTPException(400, "Ongeldige bronsoort.")
     if not (cfg.get("ai_tool") or "").strip():
@@ -1024,6 +1054,7 @@ async def api_process(cfg: dict):
         "alg": cfg.get("alg", "es256"),
         "verify": bool(cfg.get("verify", True)),
         "burn_icon": bool(cfg.get("burn_icon", True)),
+        "replace_originals": bool(cfg.get("replace_originals")),
         "label": label,
     }
 
