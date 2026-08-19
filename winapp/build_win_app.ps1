@@ -1,6 +1,7 @@
 # Bouwt de Windows-"app": downloadt c2patool.exe en maakt snelkoppelingen in het
 # Startmenu en op het bureaublad. Herbruikbaar: draai dit opnieuw na wijzigingen.
-$ErrorActionPreference = "Stop"
+# 'Continue' i.p.v. 'Stop': externe uitvoer mag het script niet laten crashen.
+$ErrorActionPreference = "Continue"
 
 $AppDir = (Resolve-Path "$PSScriptRoot\..").Path
 $Bin = Join-Path $AppDir "bin"
@@ -43,13 +44,22 @@ $targets = @(
   (Join-Path ([Environment]::GetFolderPath("Desktop"))  "C2PA AI-labeltool.lnk")
 )
 foreach ($t in $targets) {
-  $lnk = $ws.CreateShortcut($t)
-  $lnk.TargetPath = $psexe
-  $lnk.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcher`""
-  $lnk.WorkingDirectory = $AppDir
-  $lnk.Description = "C2PA AI-labeltool"
-  if (Test-Path $icon) { $lnk.IconLocation = $icon }
-  $lnk.Save()
+  try {
+    $lnk = $ws.CreateShortcut($t)
+    $lnk.TargetPath = $psexe
+    $lnk.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcher`""
+    $lnk.WorkingDirectory = $AppDir
+    $lnk.Description = "C2PA AI-labeltool"
+    if (Test-Path $icon) { $lnk.IconLocation = $icon }
+    $lnk.Save()
+  } catch {
+    Write-Warning "Kon snelkoppeling niet maken: $t ($($_.Exception.Message))"
+  }
 }
 
-Write-Host "`nKlaar: de app staat in het Startmenu en op het bureaublad."
+if (Test-Path $Exe) {
+  Write-Host "`nKlaar: de app staat in het Startmenu en op het bureaublad."
+} else {
+  Write-Warning "`nSnelkoppelingen gemaakt, maar c2patool.exe ontbreekt in $Bin."
+  Write-Warning "De app opent wel, maar de Start-knop blijft uit tot c2patool aanwezig is."
+}
