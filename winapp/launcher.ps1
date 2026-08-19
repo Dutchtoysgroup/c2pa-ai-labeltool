@@ -82,6 +82,14 @@ if (-not (Test-Path "$AppDir\.venv\Scripts\python.exe")) {
   & "$AppDir\.venv\Scripts\python.exe" -m pip install -q -r "$AppDir\requirements.txt"
 }
 
+# Ruim een eventueel vastgelopen eerdere server op: poort 8000 kan nog bezet zijn
+# door een oud pythonw-proces dat niet meer op /api/status antwoordt, waardoor een
+# nieuwe server niet kan binden ([Errno 10048]).
+Get-CimInstance Win32_Process -Filter "Name = 'pythonw.exe'" |
+  Where-Object { $_.CommandLine -like "*$AppDir*" } |
+  ForEach-Object { LogLine "oude server stoppen (PID $($_.ProcessId))"; Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Start-Sleep -Milliseconds 700
+
 # --- Server op de achtergrond starten; wij openen de browser ------------------
 LogLine "server starten"
 $env:C2PA_NO_BROWSER = "1"
