@@ -47,6 +47,7 @@
     transition:border-color .15s, box-shadow .15s;}
   input::placeholder{color:var(--muted-2)}
   input:focus,input:focus-visible,select:focus,textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--ring)}
+  input.invalid,select.invalid,textarea.invalid,input.invalid:focus,select.invalid:focus,textarea.invalid:focus{border-color:var(--err);box-shadow:0 0 0 3px rgba(255,100,103,.28)}
   .row{display:flex;gap:10px}
   .row > *{flex:1}
   .check{display:flex;align-items:center;gap:9px;margin-bottom:10px;font-size:13px;cursor:pointer}
@@ -504,7 +505,7 @@ async function pickFolder(targetId, prompt){
     if(!r.ok){ const j=await r.json().catch(()=>({})); toast(j.detail||'Mapkiezer niet beschikbaar.',true); return; }
     const j=await r.json();
     if(j.canceled) return;              // gebruiker klikte Annuleren
-    if(j.ok && j.path){ $(targetId).value=j.path; syncUI(); schedulePreview(); }
+    if(j.ok && j.path){ $(targetId).value=j.path; $(targetId).classList.remove('invalid'); syncUI(); schedulePreview(); }
   }catch(e){ toast('Kon de mapkiezer niet openen.',true); }
 }
 $('browseInput').onclick=()=>pickFolder('input_dir','Kies de invoermap met beelden');
@@ -530,11 +531,23 @@ function syncMsg(base, j){
 }
 
 // ---- processing ----
+function clearInvalid(){ document.querySelectorAll('.invalid').forEach(el=>el.classList.remove('invalid')); }
+['input_dir','ai_tool'].forEach(id=>$(id).addEventListener('input',()=>$(id).classList.remove('invalid')));
+
 $('startBtn').onclick=async()=>{
   if(!C2PA_OK) return;
+  clearInvalid();
   const cfg=collectConfig(true);
-  if(!cfg.input_dir){ toast('Mappad (invoer) is verplicht.',true); return; }
-  if(!cfg.ai_tool){ toast('AI-tool is verplicht.',true); return; }
+  const missing=[];
+  if(!cfg.input_dir) missing.push(['input_dir','Mappad (invoer) is verplicht.']);
+  if(!cfg.ai_tool)   missing.push(['ai_tool','AI-tool is verplicht.']);
+  if(missing.length){
+    missing.forEach(([id])=>$(id).classList.add('invalid'));
+    const [firstId, firstMsg]=missing[0];
+    toast(firstMsg, true);
+    $(firstId).focus(); $(firstId).scrollIntoView({behavior:'smooth', block:'center'});
+    return;
+  }
   if(cfg.replace_originals){
     const ok = await confirmModal({
       title:'Weet je zeker dat je de beelden wilt vervangen?',
