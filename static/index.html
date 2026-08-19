@@ -112,6 +112,10 @@
   .modal .x{position:absolute;top:12px;right:14px;cursor:pointer;color:var(--muted-2);font-size:20px;
     line-height:1;background:none;border:none;padding:2px 4px}
   .modal .x:hover{color:var(--text)}
+  .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;flex-wrap:wrap}
+  .modal-actions .btn{flex:0 0 auto}
+  .btn.grey{background:#2b2e2b;color:#c9cec7}
+  .btn.grey:hover{background:#343833}
   .badge.ok{cursor:pointer}
   code{background:var(--card-2);padding:1px 6px;border-radius:6px;font-size:12px;border:1px solid var(--line)}
 </style>
@@ -532,11 +536,15 @@ $('startBtn').onclick=async()=>{
   if(!cfg.input_dir){ toast('Mappad (invoer) is verplicht.',true); return; }
   if(!cfg.ai_tool){ toast('AI-tool is verplicht.',true); return; }
   if(cfg.replace_originals){
-    const ok = confirm(
-      'Originelen vervangen — weet je het zeker?\n\n'+
-      'De originele bestanden in de invoermap worden OVERSCHREVEN door de gelabelde '+
-      '+ ondertekende versie. Dit kan niet ongedaan worden gemaakt en er wordt geen '+
-      'kopie bewaard.\n\nKlik op OK om door te gaan met vervangen, of Annuleren om te stoppen.');
+    const ok = await confirmModal({
+      title:'Weet je zeker dat je de beelden wilt vervangen?',
+      body:'<p>Je staat op het punt de <b>originele bestanden</b> in de invoermap te '
+          +'<b>overschrijven</b> met de gelabelde + ondertekende versie.</p>'
+          +'<p>Dit kan <b>niet ongedaan</b> worden gemaakt en er wordt <b>geen kopie</b> '
+          +'bewaard. Maak vooraf een back-up als je de originelen wilt behouden.</p>',
+      confirmText:'Ik weet het zeker',
+      cancelText:'Annuleren'
+    });
     if(!ok){ toast('Geannuleerd — originelen niet vervangen.'); return; }
     cfg.confirm_replace = true;
   }
@@ -610,6 +618,27 @@ async function refreshVersion(){
 $('verBadge').onclick=()=>{ const b=$('verBadge'); b.className='badge info'; b.textContent='Controleren…'; refreshVersion(); };
 
 // ---- init ----
+function confirmModal({title, body, confirmText, cancelText}){
+  return new Promise(resolve=>{
+    const ov=document.createElement('div'); ov.className='modal-ov';
+    ov.innerHTML='<div class="modal" role="dialog" aria-modal="true">'
+      +'<h3>'+title+'</h3>'+body
+      +'<div class="modal-actions">'
+      +'<button class="btn grey" data-act="confirm">'+confirmText+'</button>'
+      +'<button class="btn" data-act="cancel">'+cancelText+'</button>'
+      +'</div></div>';
+    let done=false;
+    const finish=(val)=>{ if(done) return; done=true; ov.remove(); document.removeEventListener('keydown',onKey); resolve(val); };
+    function onKey(e){ if(e.key==='Escape') finish(false); if(e.key==='Enter') finish(false); }
+    ov.addEventListener('click', e=>{ if(e.target===ov) finish(false); });
+    ov.querySelector('[data-act="cancel"]').onclick=()=>finish(false);
+    ov.querySelector('[data-act="confirm"]').onclick=()=>finish(true);
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(ov);
+    // De veilige (groene) Annuleren-knop krijgt focus: snel doorklikken/Enter annuleert.
+    ov.querySelector('[data-act="cancel"]').focus();
+  });
+}
 function showInfo(title, bodyHtml){
   const ov=document.createElement('div'); ov.className='modal-ov';
   ov.innerHTML='<div class="modal" role="dialog" aria-modal="true">'
