@@ -34,10 +34,30 @@ if (-not (Test-Path $Exe)) {
   }
 }
 
+# --- Python-omgeving nu al opzetten (zodat de eerste start snel en zichtbaar is)
+$venvPy = Join-Path $AppDir ".venv\Scripts\python.exe"
+if (-not (Test-Path $venvPy)) {
+  $py = $null; $pyArgs = @()
+  if (Get-Command py -ErrorAction SilentlyContinue)         { $py = "py";     $pyArgs = @("-3") }
+  elseif (Get-Command python -ErrorAction SilentlyContinue) { $py = "python"; $pyArgs = @() }
+  if ($py) {
+    Write-Host "-> Python-omgeving opzetten (eenmalig, even geduld)..."
+    & $py @pyArgs -m venv (Join-Path $AppDir ".venv")
+    & $venvPy -m pip install -q --upgrade pip
+    & $venvPy -m pip install -q -r (Join-Path $AppDir "requirements.txt")
+    if (Test-Path $venvPy) { Write-Host "-> Python-omgeving klaar." }
+    else { Write-Warning "Python-omgeving kon niet worden aangemaakt." }
+  } else {
+    Write-Warning "Python niet gevonden; de omgeving wordt bij de eerste start opgezet."
+  }
+}
+
 # --- Snelkoppelingen (Startmenu + Bureaublad) ---------------------------------
-$launcher = Join-Path $AppDir "winapp\launcher.ps1"
+# De snelkoppeling start via een klein VBS-bestand dat PowerShell volledig
+# verborgen aanroept -> geen leeg terminalvenster meer.
+$vbs = Join-Path $AppDir "winapp\launcher.vbs"
 $icon = Join-Path $AppDir "winapp\AppIcon.ico"
-$psexe = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+$wsexe = Join-Path $env:SystemRoot "System32\wscript.exe"
 $ws = New-Object -ComObject WScript.Shell
 $targets = @(
   (Join-Path ([Environment]::GetFolderPath("Programs")) "C2PA AI-labeltool.lnk"),
@@ -46,8 +66,8 @@ $targets = @(
 foreach ($t in $targets) {
   try {
     $lnk = $ws.CreateShortcut($t)
-    $lnk.TargetPath = $psexe
-    $lnk.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcher`""
+    $lnk.TargetPath = $wsexe
+    $lnk.Arguments = "`"$vbs`""
     $lnk.WorkingDirectory = $AppDir
     $lnk.Description = "C2PA AI-labeltool"
     if (Test-Path $icon) { $lnk.IconLocation = $icon }
