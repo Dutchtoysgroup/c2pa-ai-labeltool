@@ -68,11 +68,14 @@ gh auth setup-git 2>&1 | Out-Null   # git gebruikt voortaan deze login (ook voor
 # 5) repo ophalen of bijwerken
 if (Test-Path (Join-Path $Dest ".git")) {
   Write-Host "Bestaande installatie bijwerken..."
-  git -C $Dest pull --ff-only 2>&1 | Out-Host
+  # Uitvoer opvangen i.p.v. tonen: git schrijft voortgang naar stderr, wat
+  # PowerShell anders (onterecht) rood weergeeft. Alleen bij een echte fout tonen.
+  $gitOut = git -C $Dest pull --ff-only --quiet 2>&1
+  if ($LASTEXITCODE -ne 0) { $gitOut | ForEach-Object { Write-Host $_ }; Fail "Bijwerken mislukt." }
 } else {
   Write-Host "App ophalen van GitHub..."
-  git clone $RepoUrl $Dest 2>&1 | Out-Host
-  if ($LASTEXITCODE -ne 0) { Fail "Ophalen mislukt. Heb je toegang tot de repo? Vraag of je bent toegevoegd aan $Repo." }
+  $gitOut = git clone --quiet $RepoUrl $Dest 2>&1
+  if ($LASTEXITCODE -ne 0) { $gitOut | ForEach-Object { Write-Host $_ }; Fail "Ophalen mislukt. Heb je toegang tot de repo? Vraag of je bent toegevoegd aan $Repo." }
 }
 
 # 6) app bouwen (downloadt zelf c2patool + maakt snelkoppelingen)
