@@ -861,6 +861,8 @@ def _run_powershell(script: str, timeout: int = 300):
         return subprocess.run(
             [exe, "-NoProfile", "-ExecutionPolicy", "Bypass", "-STA", "-File", tmp],
             capture_output=True, text=True, timeout=timeout,
+            # Geen consolevenster laten flitsen; de dialoog zelf verschijnt wel.
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
     finally:
         try:
