@@ -165,8 +165,10 @@
         <label class="field"><span>Mappad (invoer) — absoluut pad *</span>
           <div class="path-row">
             <input type="text" id="input_dir" placeholder="/Users/merijn/…/beelden" />
-            <button class="btn ghost sm" type="button" id="browseInput">Bladeren…</button>
+            <button class="btn ghost sm" type="button" id="browseInput">Map…</button>
+            <button class="btn ghost sm" type="button" id="pickFiles">Bestanden…</button>
           </div>
+          <div class="hint" id="fileSel" style="display:none"></div>
         </label>
         <label class="field"><span>Uitvoermap (<code>&lt;invoer&gt;</code> = de invoermap)</span>
           <div class="path-row">
@@ -310,6 +312,7 @@
 <script>
 const $ = id => document.getElementById(id);
 let C2PA_OK = false;
+let SELECTED_FILES = [];
 
 // ---- veldbeheer ----
 const LABEL_IDS = {
@@ -335,6 +338,7 @@ function collectLabel(){
 function collectConfig(includeInput=true){
   return {
     input_dir: includeInput ? $('input_dir').value.trim() : '',
+    files: includeInput ? SELECTED_FILES.slice() : [],
     output_dir: $('output_dir').value.trim(),
     recursive: $('recursive').checked,
     replace_originals: $('replace_originals').checked,
@@ -412,6 +416,8 @@ function syncUI(){
   $('output_dir').disabled = rep;
   $('browseOutput').disabled = rep;
   $('output_dir').style.opacity = rep ? '.45' : '1';
+  const filesMode = SELECTED_FILES.length > 0;
+  $('recursive').disabled = filesMode;
   $('startBtn').disabled = !C2PA_OK;
   $('startBtn').textContent = C2PA_OK ? 'Start' : 'Start (c2patool ontbreekt)';
 }
@@ -426,6 +432,7 @@ async function doPreview(){
   try{
     const r=await fetch('/api/preview',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({input_dir:$('input_dir').value.trim(),recursive:$('recursive').checked,
+        sample:(SELECTED_FILES.find(x=>/\.(jpe?g|png|webp)$/i.test(x))||''),
         enabled:$('burn_icon').checked,label:collectLabel()})});
     const j=await r.json();
     if(j.image){ $('previewImg').src=j.image; $('previewSrc').textContent='Bron: '+(j.source||''); }
@@ -505,11 +512,40 @@ async function pickFolder(targetId, prompt){
     if(!r.ok){ const j=await r.json().catch(()=>({})); toast(j.detail||'Mapkiezer niet beschikbaar.',true); return; }
     const j=await r.json();
     if(j.canceled) return;              // gebruiker klikte Annuleren
-    if(j.ok && j.path){ $(targetId).value=j.path; $(targetId).classList.remove('invalid'); syncUI(); schedulePreview(); }
+    if(j.ok && j.path){ if(targetId==='input_dir'){ SELECTED_FILES=[]; renderFileSel(); } $(targetId).value=j.path; $(targetId).classList.remove('invalid'); syncUI(); schedulePreview(); }
   }catch(e){ toast('Kon de mapkiezer niet openen.',true); }
 }
 $('browseInput').onclick=()=>pickFolder('input_dir','Kies de invoermap met beelden');
 $('browseOutput').onclick=()=>pickFolder('output_dir','Kies de uitvoermap');
+
+// ---- specifieke bestanden kiezen ----
+function renderFileSel(){
+  const el=$('fileSel');
+  if(SELECTED_FILES.length){
+    el.style.display='';
+    el.innerHTML=SELECTED_FILES.length+' bestand(en) geselecteerd \u2014 alleen deze worden verwerkt. '
+      +'<a href="#" id="clearFiles">Selectie wissen (hele map gebruiken)</a>';
+    $('clearFiles').onclick=(e)=>{ e.preventDefault(); SELECTED_FILES=[]; renderFileSel(); syncUI(); schedulePreview(); };
+  } else { el.style.display='none'; el.innerHTML=''; }
+}
+async function pickFiles(){
+  try{
+    const start=$('input_dir').value.trim();
+    const r=await fetch('/api/pick-files',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({prompt:'Kies \u00e9\u00e9n of meer beelden', start})});
+    if(!r.ok){ const j=await r.json().catch(()=>({})); toast(j.detail||'Bestandskiezer niet beschikbaar.',true); return; }
+    const j=await r.json();
+    if(j.canceled) return;
+    if(j.ok && j.paths && j.paths.length){
+      SELECTED_FILES=j.paths;
+      const parent=j.paths[0].replace(/\/[^\/]*$/,'');   // map van het eerste bestand
+      $('input_dir').value=parent; $('input_dir').classList.remove('invalid');
+      renderFileSel(); syncUI(); schedulePreview();
+      toast(j.paths.length+' bestand(en) geselecteerd.');
+    }
+  }catch(e){ toast('Kon de bestandskiezer niet openen.',true); }
+}
+$('pickFiles').onclick=pickFiles;
 
 // ---- toast ----
 let toastT=null;
@@ -605,7 +641,7 @@ function escapeHtml(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&l
 ['use_test_cert','cert_path','key_path','burn_icon'].forEach(id=>$(id).addEventListener('input',syncUI));
 $('replace_originals').addEventListener('change',syncUI);
 Object.values(LABEL_IDS).forEach(id=>{ $(id).addEventListener('input',()=>{syncUI();schedulePreview();}); });
-$('input_dir').addEventListener('input',schedulePreview);
+$('input_dir').addEventListener('input',()=>{ if(SELECTED_FILES.length){ SELECTED_FILES=[]; renderFileSel(); syncUI(); } schedulePreview(); });
 $('recursive').addEventListener('change',schedulePreview);
 $('burn_icon').addEventListener('change',()=>{syncUI();schedulePreview();});
 

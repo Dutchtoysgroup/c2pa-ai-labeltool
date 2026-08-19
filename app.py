@@ -497,7 +497,8 @@ def process_batch(job_id: str, cfg: dict):
 
     try:
         in_dir = Path(cfg["input_dir"]).expanduser()
-        if not in_dir.exists() or not in_dir.is_dir():
+        selected = [Path(f).expanduser() for f in (cfg.get("files") or [])]
+        if not selected and (not in_dir.exists() or not in_dir.is_dir()):
             emit({"type": "error", "msg": f"Invoermap bestaat niet: {in_dir}"})
             emit({"type": "done"})
             return
@@ -513,16 +514,20 @@ def process_batch(job_id: str, cfg: dict):
                 out_dir = Path(out_pattern.replace("<invoer>", str(in_dir))).expanduser()
             out_dir.mkdir(parents=True, exist_ok=True)
 
-        all_files = collect_files(in_dir, cfg.get("recursive", False))
-        # negeer bestanden die al in de uitvoermap staan
-        if out_dir is not None:
-            all_files = [f for f in all_files if out_dir not in f.parents and f.parent != out_dir]
+        if selected:
+            # alleen de expliciet gekozen bestanden verwerken
+            all_files = [f for f in selected if f.is_file()]
+        else:
+            all_files = collect_files(in_dir, cfg.get("recursive", False))
+            # negeer bestanden die al in de uitvoermap staan
+            if out_dir is not None:
+                all_files = [f for f in all_files if out_dir not in f.parents and f.parent != out_dir]
         work = [f for f in all_files if f.suffix.lower() in SUPPORTED_EXT]
         skipped_unsupported = [f for f in all_files if f.suffix.lower() not in SUPPORTED_EXT]
 
         total = len(work) + len(skipped_unsupported)
         if total == 0:
-            emit({"type": "error", "msg": "Geen bestanden gevonden in de opgegeven map."})
+            emit({"type": "error", "msg": "Geen te verwerken bestanden gevonden."})
             emit({"type": "done"})
             return
 
@@ -660,7 +665,7 @@ def save_templates(items):
 
 
 # Deze velden zijn per-run en horen NIET in een template thuis.
-TEMPLATE_EXCLUDE_FIELDS = ("input_dir", "output_dir", "bronsoort", "ai_tool", "replace_originals", "confirm_replace")
+TEMPLATE_EXCLUDE_FIELDS = ("input_dir", "output_dir", "bronsoort", "ai_tool", "replace_originals", "confirm_replace", "files")
 
 
 def clean_template_fields(fields):
@@ -883,6 +888,52 @@ def api_pick_folder(payload: dict | None = None):
     return {"ok": True, "path": path}
 
 
+@app.post("/api/pick-files")
+def api_pick_files(payload: dict | None = None):
+    """Open een native macOS-bestandskiezer (Finder) met meervoudige selectie en
+    geef de gekozen absolute paden terug. Zo kun je losse beelden i.p.v. een hele
+    map verwerken. Alleen op macOS."""
+    if sys.platform != "darwin" or not which("osascript"):
+        raise HTTPException(400, "De bestandskiezer werkt alleen op macOS. Gebruik anders een hele map.")
+    prompt = "Kies \u00e9\u00e9n of meer beelden"
+    start = ""
+    if isinstance(payload, dict):
+        prompt = (payload.get("prompt") or prompt).strip() or prompt
+        start = (payload.get("start") or "").strip()
+
+    loc = ""
+    if start:
+        sp = Path(start).expanduser()
+        base = sp if sp.is_dir() else sp.parent
+        if base.is_dir():
+            loc = f" default location (POSIX file {_applescript_quote(str(base))})"
+
+    exts = "{" + ", ".join(_applescript_quote(e.lstrip(".")) for e in sorted(SUPPORTED_EXT)) + "}"
+    script = (
+        f"set theFiles to choose file with prompt {_applescript_quote(prompt)} "
+        f"of type {exts} with multiple selections allowed{loc}\n"
+        "set AppleScript's text item delimiters to linefeed\n"
+        "set out to \"\"\n"
+        "repeat with f in theFiles\n"
+        "  set out to out & POSIX path of f & linefeed\n"
+        "end repeat\n"
+        "return out"
+    )
+    try:
+        r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=300)
+    except Exception as e:
+        raise HTTPException(500, f"Kon de bestandskiezer niet openen: {e}")
+
+    if r.returncode != 0:
+        err = (r.stderr or "").strip()
+        if "-128" in err or "cancel" in err.lower():
+            return {"ok": False, "canceled": True}
+        raise HTTPException(500, err.splitlines()[-1] if err else "Bestandskiezer mislukt.")
+
+    paths = [ln.strip() for ln in (r.stdout or "").splitlines() if ln.strip()]
+    return {"ok": True, "paths": paths}
+
+
 @app.get("/api/templates")
 def api_get_templates():
     return {"templates": load_templates()}
@@ -949,7 +1000,12 @@ async def api_preview(payload: dict):
     label = payload.get("label") or {}
     input_dir = (payload.get("input_dir") or "").strip()
     sample = None
-    if input_dir:
+    sample_arg = (payload.get("sample") or "").strip()
+    if sample_arg:
+        ps = Path(sample_arg).expanduser()
+        if ps.is_file() and ps.suffix.lower() in IMAGE_EXT:
+            sample = ps
+    if sample is None and input_dir:
         p = Path(input_dir).expanduser()
         if p.is_dir():
             for f in sorted(p.glob("*")):
@@ -1012,10 +1068,27 @@ async def api_process(cfg: dict):
 
     # ---- validatie ----
     input_dir = (cfg.get("input_dir") or "").strip()
-    if not input_dir:
-        raise HTTPException(400, "Mappad (invoer) is verplicht.")
-    if not Path(input_dir).expanduser().is_dir():
-        raise HTTPException(400, f"Invoermap bestaat niet: {input_dir}")
+    raw_files = cfg.get("files") or []
+    if not isinstance(raw_files, list):
+        raw_files = []
+    files = []
+    for f in raw_files:
+        fp = str(f).strip()
+        if not fp:
+            continue
+        pf = Path(fp).expanduser()
+        if not pf.is_file():
+            raise HTTPException(400, f"Bestand bestaat niet: {fp}")
+        files.append(str(pf))
+    if files:
+        # bestanden-modus: invoermap mag afgeleid worden van het eerste bestand
+        if not input_dir:
+            input_dir = str(Path(files[0]).parent)
+    else:
+        if not input_dir:
+            raise HTTPException(400, "Mappad (invoer) is verplicht.")
+        if not Path(input_dir).expanduser().is_dir():
+            raise HTTPException(400, f"Invoermap bestaat niet: {input_dir}")
     if cfg.get("replace_originals") and not cfg.get("confirm_replace"):
         raise HTTPException(400, "Vervangen van originelen is niet bevestigd.")
     if cfg.get("bronsoort") not in DIGITAL_SOURCE_TYPES:
@@ -1043,6 +1116,7 @@ async def api_process(cfg: dict):
         "input_dir": input_dir,
         "output_dir": cfg.get("output_dir", ""),
         "recursive": bool(cfg.get("recursive")),
+        "files": files,
         "bronsoort": cfg["bronsoort"],
         "ai_tool": cfg["ai_tool"],
         "model": cfg.get("model", ""),
