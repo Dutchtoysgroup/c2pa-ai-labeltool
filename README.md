@@ -1,6 +1,6 @@
 # EXIT-Toys-C2PA-Tool
 
-Lokale, offline desktop-tool die per map beelden:
+Lokale, offline desktop-tool die je beelden — een hele map of een eigen selectie — per stuk:
 
 1. **een zichtbaar AI-icoon/label inbrandt** (optioneel, met Pillow), en
 2. **C2PA Content Credentials** toevoegt die de herkomst declareren als
@@ -139,15 +139,32 @@ Installeer op macOS met `brew install ffmpeg`.
   Een melding in beeld bevestigt of het delen via GitHub gelukt is; lukt het
   pushen niet (bijv. offline of geen push-rechten), dan blijft de wijziging in
   elk geval lokaal bewaard.
-- **Mappad (invoer)** → plak een absoluut pad. **Uitvoermap** → standaard
-  `<invoer>/gelabeld`. Originelen worden nooit overschreven.
+- **Invoer** → kies wat je verwerkt:
+  - **Map…** opent een Finder-mapkiezer (of plak een absoluut pad); de hele map
+    wordt verwerkt (met *Ook submappen* eventueel recursief).
+  - **Bestanden…** opent een Finder-bestandskiezer waarmee je één of meer losse
+    beelden selecteert — dan worden **alléén die bestanden** verwerkt. De
+    invoermap wordt afgeleid van de map van het eerste bestand.
+- **Uitvoermap** → standaard `<invoer>/gelabeld`; originelen worden dan nooit
+  overschreven.
+- **Originelen vervangen** (aanvinken) → schrijft het gelabelde + ondertekende
+  bestand **atomair terug over het origineel** in plaats van naar een uitvoermap.
+  Onomkeerbaar en zonder kopie, dus dubbel gezekerd: je vinkt het zelf aan én
+  bevestigt bij Start in een pop-up (waarin de veilige **Annuleren**-knop bewust
+  de opvallende groene is). Maak vooraf een back-up.
 - **Bronsoort** bepaalt de `digitalSourceType`:
   - *Volledig AI-gegenereerd* → `…/trainedAlgorithmicMedia`
   - *Echte foto met AI-elementen* → `…/compositeWithTrainedAlgorithmicMedia`
 - **Zichtbaar label**: kies icoon (of upload een nieuwe PNG met transparantie),
   tekst, hoek, formaat (% van beeldbreedte, met min/max px), marge en een
-  optionele contrast-pill. De **live preview** toont een voorbeeldbeeld uit je
-  map met de huidige instellingen.
+  optionele contrast-pill. De **live preview** toont hoe het label valt en werkt
+  meteen mee met je instellingen. Heb je meerdere beelden geselecteerd, dan wordt
+  de preview een **carrousel**: blader met de pijltjes links/rechts door je
+  selectie (met een teller, bv. `2 / 5`).
+- **Verplicht veld leeg?** Klik je op Start terwijl de invoer of AI-tool leeg is,
+  dan krijgt dat veld een **rode rand** naast de melding. De badges rechtsboven
+  tonen de status van `c2patool` en `ffmpeg`; klik op de `c2patool`-badge voor
+  uitleg over wat het is en waarom het nodig is.
 
 ### Vaste verwerkingsvolgorde (belangrijk)
 
