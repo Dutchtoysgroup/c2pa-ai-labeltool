@@ -70,9 +70,16 @@
   .path-row{display:flex;gap:8px;align-items:stretch}
   .path-row input{flex:1;min-width:0}
   .path-row .btn{flex:0 0 auto;white-space:nowrap}
-  .preview-wrap{background:var(--card-2);border:1px solid var(--line);border-radius:14px;
+  .preview-wrap{background:var(--card-2);border:1px solid var(--line);border-radius:14px;position:relative;
     overflow:hidden;min-height:180px;display:flex;align-items:center;justify-content:center}
   .preview-wrap img{max-width:100%;display:block}
+  .pv-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:2;width:34px;height:34px;border-radius:50%;
+    border:1px solid var(--line-2);background:rgba(11,13,11,.60);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+    color:var(--text);font-size:20px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+  .pv-nav:hover{background:rgba(11,13,11,.85);border-color:var(--primary)}
+  .pv-prev{left:10px} .pv-next{right:10px}
+  .pv-count{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);z-index:2;background:rgba(11,13,11,.72);
+    color:var(--text);font-size:11.5px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);font-variant-numeric:tabular-nums}
   .slider-row{display:flex;align-items:center;gap:12px}
   .slider-row input[type=range]{flex:1;accent-color:var(--primary)}
   .slider-row .val{width:52px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums;font-size:12.5px}
@@ -284,7 +291,12 @@
 
       <div class="card">
         <h2>Live preview</h2>
-        <div class="preview-wrap"><img id="previewImg" alt="preview" /></div>
+        <div class="preview-wrap">
+          <button class="pv-nav pv-prev" id="prevBtn" type="button" aria-label="Vorige afbeelding" style="display:none">‹</button>
+          <img id="previewImg" alt="preview" />
+          <button class="pv-nav pv-next" id="nextBtn" type="button" aria-label="Volgende afbeelding" style="display:none">›</button>
+          <span class="pv-count" id="previewCount" style="display:none"></span>
+        </div>
         <div class="hint" id="previewSrc">Nog geen beeld geladen.</div>
       </div>
     </div>
@@ -313,6 +325,8 @@
 const $ = id => document.getElementById(id);
 let C2PA_OK = false;
 let SELECTED_FILES = [];
+let PREVIEW_IMAGES = [];
+let previewIndex = 0;
 
 // ---- veldbeheer ----
 const LABEL_IDS = {
@@ -432,7 +446,7 @@ async function doPreview(){
   try{
     const r=await fetch('/api/preview',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({input_dir:$('input_dir').value.trim(),recursive:$('recursive').checked,
-        sample:(SELECTED_FILES.find(x=>/\.(jpe?g|png|webp)$/i.test(x))||''),
+        sample:(PREVIEW_IMAGES[previewIndex]||''),
         enabled:$('burn_icon').checked,label:collectLabel()})});
     const j=await r.json();
     if(j.image){ $('previewImg').src=j.image; $('previewSrc').textContent='Bron: '+(j.source||''); }
@@ -519,7 +533,28 @@ $('browseInput').onclick=()=>pickFolder('input_dir','Kies de invoermap met beeld
 $('browseOutput').onclick=()=>pickFolder('output_dir','Kies de uitvoermap');
 
 // ---- specifieke bestanden kiezen ----
+function updatePreviewImages(){
+  PREVIEW_IMAGES = SELECTED_FILES.filter(x=>/\.(jpe?g|png|webp)$/i.test(x));
+  if(previewIndex >= PREVIEW_IMAGES.length) previewIndex = 0;
+  renderPreviewNav();
+}
+function renderPreviewNav(){
+  const multi = PREVIEW_IMAGES.length > 1;
+  $('prevBtn').style.display = multi ? '' : 'none';
+  $('nextBtn').style.display = multi ? '' : 'none';
+  $('previewCount').style.display = multi ? '' : 'none';
+  if(multi) $('previewCount').textContent = (previewIndex+1)+' / '+PREVIEW_IMAGES.length;
+}
+function stepPreview(d){
+  if(PREVIEW_IMAGES.length < 2) return;
+  previewIndex = (previewIndex + d + PREVIEW_IMAGES.length) % PREVIEW_IMAGES.length;
+  renderPreviewNav(); doPreview();
+}
+$('prevBtn').onclick=()=>stepPreview(-1);
+$('nextBtn').onclick=()=>stepPreview(1);
+
 function renderFileSel(){
+  updatePreviewImages();
   const el=$('fileSel');
   if(SELECTED_FILES.length){
     el.style.display='';
@@ -537,7 +572,7 @@ async function pickFiles(){
     const j=await r.json();
     if(j.canceled) return;
     if(j.ok && j.paths && j.paths.length){
-      SELECTED_FILES=j.paths;
+      SELECTED_FILES=j.paths; previewIndex=0;
       const parent=j.paths[0].replace(/\/[^\/]*$/,'');   // map van het eerste bestand
       $('input_dir').value=parent; $('input_dir').classList.remove('invalid');
       renderFileSel(); syncUI(); schedulePreview();
