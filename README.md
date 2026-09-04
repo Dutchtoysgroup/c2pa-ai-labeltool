@@ -252,6 +252,23 @@ sommige social platforms) **strippen C2PA-metadata vaak weg**. Daarom:
 
 ---
 
+## Ontwikkelen — let op de Python-versie
+
+De tool draait op de Python die al op de Mac/pc staat. Veel (collega-)Macs hebben
+**alleen de ingebouwde Python 3.9** van macOS. Houd de code daarom compatibel met
+**Python 3.9 t/m 3.13**:
+
+- **Geen** PEP 604-union-syntax (`dict | None`) in annotaties op FastAPI-endpoints
+  — FastAPI evalueert die bij het opstarten en dat crasht op 3.9. Gebruik
+  `Optional[dict]` (met `from typing import Optional`).
+- **Geen** andere 3.10+-only syntax (zoals `match`/`case`).
+
+Snelle controle met de ingebouwde 3.9 vóór je pusht:
+
+```bash
+/usr/bin/python3 -m py_compile app.py
+```
+
 ## Projectstructuur
 
 ```
