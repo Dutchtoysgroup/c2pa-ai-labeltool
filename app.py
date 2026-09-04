@@ -27,6 +27,7 @@ import uuid
 import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 # ---------------------------------------------------------------------------
 # Vriendelijke check op ontbrekende dependencies
@@ -872,7 +873,7 @@ def _run_powershell(script: str, timeout: int = 300):
 
 
 @app.post("/api/pick-folder")
-def api_pick_folder(payload: dict | None = None):
+def api_pick_folder(payload: Optional[dict] = None):
     """Open een native mapkiezer (Finder op macOS, Verkenner op Windows) en geef
     het gekozen absolute pad terug. Handiger dan het pad handmatig plakken."""
     prompt = "Kies een map"
@@ -943,7 +944,7 @@ def api_pick_folder(payload: dict | None = None):
 
 
 @app.post("/api/pick-files")
-def api_pick_files(payload: dict | None = None):
+def api_pick_files(payload: Optional[dict] = None):
     """Open een native bestandskiezer met meervoudige selectie (Finder op macOS,
     Verkenner op Windows) en geef de gekozen absolute paden terug. Zo kun je losse
     beelden i.p.v. een hele map verwerken."""
