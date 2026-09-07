@@ -290,3 +290,7 @@ install.ps1       Windows-installer (winget/gh/clone/build)
 
 `jpg`, `jpeg`, `png`, `webp` — en `mp4`, `mov` (C2PA; zichtbaar label alleen met
 ffmpeg). Overige bestanden worden overgeslagen en gelogd.
+
+Bestanden **zonder (zichtbare) extensie** in de naam worden herkend op basis van
+hun inhoud en gewoon verwerkt; de uitvoer **behoudt exact dezelfde naam** — er
+wordt geen extensie toegevoegd.

@@ -487,6 +487,34 @@ def collect_files(root: Path, recursive: bool):
     return files
 
 
+def detect_ext(f: Path) -> str:
+    """Effectieve extensie voor de tooling. Geeft de echte suffix als die
+    ondersteund is; anders wordt het formaat uit de INHOUD bepaald, zodat
+    bestanden zonder (zichtbare) extensie in de naam toch verwerkt worden.
+    Retourneert '' als het bestand niet ondersteund/onbekend is."""
+    suf = f.suffix.lower()
+    if suf in SUPPORTED_EXT:
+        return suf
+    # geen bruikbare extensie -> inhoud sniffen (beeld)
+    try:
+        with Image.open(f) as im:
+            fmt = (im.format or "").upper()
+        m = {"JPEG": ".jpg", "JPG": ".jpg", "MPO": ".jpg", "PNG": ".png", "WEBP": ".webp"}
+        if fmt in m:
+            return m[fmt]
+    except Exception:
+        pass
+    # video: mp4/mov beginnen met een 'ftyp'-box
+    try:
+        with open(f, "rb") as fh:
+            head = fh.read(12)
+        if len(head) >= 8 and head[4:8] == b"ftyp":
+            return ".mov" if head[8:10] == b"qt" else ".mp4"
+    except Exception:
+        pass
+    return ""
+
+
 def process_batch(job_id: str, cfg: dict):
     q: queue.Queue = JOBS[job_id]["queue"]
 
@@ -523,8 +551,11 @@ def process_batch(job_id: str, cfg: dict):
             # negeer bestanden die al in de uitvoermap staan
             if out_dir is not None:
                 all_files = [f for f in all_files if out_dir not in f.parents and f.parent != out_dir]
-        work = [f for f in all_files if f.suffix.lower() in SUPPORTED_EXT]
-        skipped_unsupported = [f for f in all_files if f.suffix.lower() not in SUPPORTED_EXT]
+        # effectieve extensie per bestand (echte suffix, of uit de inhoud bepaald
+        # voor bestanden zonder zichtbare extensie in de naam)
+        eff = {f: detect_ext(f) for f in all_files}
+        work = [f for f in all_files if eff[f]]
+        skipped_unsupported = [f for f in all_files if not eff[f]]
 
         total = len(work) + len(skipped_unsupported)
         if total == 0:
@@ -555,13 +586,19 @@ def process_batch(job_id: str, cfg: dict):
         manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         try:
             for f in work:
-                ext = f.suffix.lower()
+                ext = eff[f]  # effectieve extensie (echte suffix, of uit inhoud)
+                name_has_ext = f.suffix.lower() in SUPPORTED_EXT
                 if replace_originals:
                     # temp met leidende punt (wordt genegeerd door collect_files)
-                    # én de originele extensie, zodat c2patool het formaat herkent.
-                    out_file = f.parent / f".c2patmp_{f.name}"
+                    final_out = f.parent / f".c2patmp_{f.name}"
                 else:
-                    out_file = out_dir / f.name
+                    final_out = out_dir / f.name
+                # c2patool eist een extensie op in- én uitvoer. Voor bestanden
+                # ZONDER (bruikbare) extensie in de naam werken we intern via
+                # temp-bestanden MÉT extensie en zetten we het eindresultaat
+                # daarna terug op exact de originele (extensieloze) naam.
+                sign_out = final_out if name_has_ext else (tmpdir / ("signed_" + f.name + ext))
+                tmp_suffix = "" if name_has_ext else ext
                 layers = []
                 try:
                     working = f  # bron voor de C2PA-stap
@@ -572,12 +609,12 @@ def process_batch(job_id: str, cfg: dict):
                             with Image.open(f) as im:
                                 info = dict(im.info)
                                 labeled = burn_label(im, cfg["label"])
-                            working = tmpdir / f.name
+                            working = tmpdir / (f.name + tmp_suffix)
                             save_like_original(labeled, working, info)
                             layers.append("icoon")
                         elif ext in VIDEO_EXT:
                             if have_ffmpeg:
-                                vtmp = tmpdir / f.name
+                                vtmp = tmpdir / (f.name + tmp_suffix)
                                 ok, vmsg = overlay_video_ffmpeg(f, vtmp, cfg["label"])
                                 if ok:
                                     working = vtmp
@@ -587,29 +624,42 @@ def process_batch(job_id: str, cfg: dict):
                             else:
                                 log("INFO", f.name, "geen ffmpeg: zichtbaar label overgeslagen voor video")
 
+                    # Geen zichtbaar label én naam zonder extensie: kopieer de bron
+                    # naar een temp MÉT extensie, zodat c2patool de input herkent.
+                    if working is f and not name_has_ext:
+                        working = tmpdir / (f.name + ext)
+                        shutil.copy2(f, working)
+
                     # ----- Stap 2: C2PA ondertekenen -----
-                    ok, msg = sign_with_c2patool(working, out_file, manifest_path)
+                    ok, msg = sign_with_c2patool(working, sign_out, manifest_path)
                     if not ok:
                         raise RuntimeError(msg)
                     layers.append("C2PA")
 
                     # ----- Stap 3: verifiëren -----
                     if do_verify:
-                        vok, vmsg = verify_with_c2patool(out_file, expected_dst)
+                        vok, vmsg = verify_with_c2patool(sign_out, expected_dst)
                         if not vok:
-                            if replace_originals and out_file.exists():
-                                out_file.unlink()
+                            if replace_originals and final_out.exists():
+                                final_out.unlink()
                             log("FOUT", f.name, f"verificatie: {vmsg}", " + ".join(layers))
                             n_error += 1
                             processed += 1
                             emit({"type": "progress", "done": processed, "total": total})
                             continue
 
+                    # Eindresultaat op exact de juiste (mogelijk extensieloze) naam
+                    # zetten. Cross-device-veilig via shutil.move.
+                    if sign_out != final_out:
+                        if final_out.exists():
+                            final_out.unlink()
+                        shutil.move(str(sign_out), str(final_out))
+
                     # In vervang-modus: atomair over het origineel heen zetten
                     # (zelfde map → os.replace is atomair). Pas ná een geslaagde
                     # (en evt. geverifieerde) ondertekening.
                     if replace_originals:
-                        os.replace(out_file, f)
+                        os.replace(final_out, f)
 
                     lay = " + ".join(layers) if layers else "-"
                     msg_ok = "getekend" + (" + geverifieerd" if do_verify else "")
@@ -618,9 +668,9 @@ def process_batch(job_id: str, cfg: dict):
                     log("OK", f.name, msg_ok, lay)
                     n_signed += 1
                 except Exception as e:  # noqa: BLE001
-                    if replace_originals and out_file.exists():
+                    if replace_originals and final_out.exists():
                         try:
-                            out_file.unlink()
+                            final_out.unlink()
                         except OSError:
                             pass
                     log("FOUT", f.name, str(e), " + ".join(layers))
