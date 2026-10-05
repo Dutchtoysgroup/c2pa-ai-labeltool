@@ -50,12 +50,18 @@ if [ -d .git ] && command -v git >/dev/null 2>&1; then
   fi
 fi
 
-# --- Draait de server al? -----------------------------------------------------
+# --- Draait de server al (en draait die de juiste versie)? --------------------
+# We onthouden bij elke start welke commit de server draait (stempelbestand) en
+# herstarten zodra die afwijkt van wat er nu op schijf staat. Zo blijft er nooit
+# een oude server hangen na een update (zelfhelend).
+CUR_COMMIT="$(git rev-parse HEAD 2>/dev/null)"
+STAMP="/tmp/c2pa-ai-tool.commit"
 if /usr/bin/curl -s -o /dev/null --max-time 2 "$URL/api/status"; then
-  if [ "$UPDATED" = "1" ]; then
-    # Nieuwe versie opgehaald → server herstarten zodat de nieuwe code laadt.
+  RUNNING_COMMIT="$(cat "$STAMP" 2>/dev/null)"
+  if [ -n "$CUR_COMMIT" ] && [ "$RUNNING_COMMIT" != "$CUR_COMMIT" ]; then
+    # Draaiende server draait verouderde code → stoppen en opnieuw starten.
     PIDS="$(/usr/sbin/lsof -ti tcp:8000 2>/dev/null)"
-    [ -n "$PIDS" ] && kill $PIDS 2>/dev/null
+    [ -n "$PIDS" ] && kill -9 $PIDS 2>/dev/null
     sleep 1
     # (valt hieronder door naar opnieuw starten)
   else
@@ -81,9 +87,15 @@ if [ ! -x ".venv/bin/python" ]; then
 fi
 
 # --- Server op de achtergrond starten; wij openen de browser -----------------
+# Zorg dat poort 8000 vrij is (evt. vastgelopen/oude server) voor een schone bind.
+PIDS="$(/usr/sbin/lsof -ti tcp:8000 2>/dev/null)"
+[ -n "$PIDS" ] && { kill -9 $PIDS 2>/dev/null; sleep 1; }
+
 /usr/bin/nohup env C2PA_NO_BROWSER=1 $ARCHPREFIX ./.venv/bin/python app.py \
   >/tmp/c2pa-ai-tool.log 2>&1 &
 disown 2>/dev/null || true
+# Onthoud welke commit deze server draait (voor de versie-check hierboven).
+printf '%s' "$CUR_COMMIT" > "$STAMP" 2>/dev/null || true
 
 for _ in $(seq 1 60); do
   if /usr/bin/curl -s -o /dev/null --max-time 2 "$URL/api/status"; then
