@@ -681,21 +681,30 @@ $('recursive').addEventListener('change',schedulePreview);
 $('burn_icon').addEventListener('change',()=>{syncUI();schedulePreview();});
 
 // ---- versie-check t.o.v. GitHub ----
+function fmtVersieDatum(iso){
+  if(!iso) return '';
+  const d=new Date(iso);
+  if(isNaN(d)) return '';
+  return d.toLocaleDateString('nl-NL',{day:'numeric',month:'short',year:'numeric'});
+}
 async function refreshVersion(){
   const b=$('verBadge'); if(!b) return;
   try{
     const v=await (await fetch('/api/version')).json();
     if(!v.git){ b.style.display='none'; return; }
     b.style.display='';
+    const datum=fmtVersieDatum(v.when);
+    const label=datum ? ('Versie '+datum) : ('Versie '+(v.local||'?'));
     if(v.up_to_date===true){
-      b.className='badge ok'; b.textContent='Up-to-date';
-      b.title=`Versie ${v.local} — gelijk aan GitHub`+(v.subject?`\n${v.subject}`:'');
+      b.className='badge ok'; b.textContent=label;
+      b.title='Actueel — gelijk aan de nieuwste versie op GitHub.'
+             +(v.local?`\nVersie ${v.local}`:'')+(v.subject?` · ${v.subject}`:'');
     } else if(v.up_to_date===false){
-      b.className='badge upd'; b.textContent='Update beschikbaar';
-      b.title=`Lokaal ${v.local} · GitHub ${v.remote}\nSluit en heropen de app om bij te werken.`;
+      b.className='badge upd'; b.textContent=label+' — update';
+      b.title=`Je draait de versie van ${datum||v.local}. Er staat een nieuwere versie op GitHub.\nSluit en heropen de app om bij te werken.`;
     } else {
-      b.className='badge info'; b.textContent='GitHub niet bereikbaar';
-      b.title='Kon de versie niet controleren (offline of geen toegang).';
+      b.className='badge info'; b.textContent=label;
+      b.title='Kon niet met GitHub vergelijken (offline of geen toegang).';
     }
   }catch(e){ b.className='badge info'; b.textContent='Versie onbekend'; b.title=''; }
 }
