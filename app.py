@@ -655,11 +655,21 @@ def process_batch(job_id: str, cfg: dict):
                             final_out.unlink()
                         shutil.move(str(sign_out), str(final_out))
 
-                    # In vervang-modus: atomair over het origineel heen zetten
-                    # (zelfde map → os.replace is atomair). Pas ná een geslaagde
-                    # (en evt. geverifieerde) ondertekening.
+                    # In vervang-modus: over het origineel heen zetten. Op een
+                    # lokale schijf is os.replace atomair; cloud-opslag (Box /
+                    # Google Drive / iCloud / OneDrive) weigert echter vaak een
+                    # rename-over-bestaand ([Errno 1] Operation not permitted).
+                    # Dan vallen we terug op het in-place overschrijven van de
+                    # inhoud. Pas ná een geslaagde (en evt. geverifieerde) tekening.
                     if replace_originals:
-                        os.replace(final_out, f)
+                        try:
+                            os.replace(final_out, f)
+                        except OSError:
+                            shutil.copyfile(final_out, f)
+                            try:
+                                os.remove(final_out)
+                            except OSError:
+                                pass
 
                     lay = " + ".join(layers) if layers else "-"
                     msg_ok = "getekend" + (" + geverifieerd" if do_verify else "")
