@@ -112,6 +112,19 @@ jobs:
           cat selftest.json
           codesign --verify --deep --strict "$APP"
 
+      # Eerst de app zelf notariseren en het ticket erop zetten, zodat hij ook
+      # uit de .dmg gesleept en offline zonder melding opent; daarna de .dmg.
+      - name: App notariseren
+        if: env.RELEASE == 'true'
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent "dist/C2PA AI-labeltool.app" notarize-app.zip
+          packaging/macos/notarize.sh notarize-app.zip
+          xcrun stapler staple "dist/C2PA AI-labeltool.app"
+          spctl --assess --type execute -vv "dist/C2PA AI-labeltool.app"
+
       - name: Schijfkopie
         run: |
           mkdir -p dmgroot out
@@ -122,26 +135,14 @@ jobs:
             codesign -s "$C2PA_CODESIGN_IDENTITY" --timestamp "out/$NAME.dmg"
           fi
 
-      # Eén keer notariseren (de .dmg, met de app erin); daarna krijgen de .dmg
-      # en de app zelf hun ticket, zodat ze ook offline zonder melding openen.
-      - name: Notariseren
+      - name: Schijfkopie notariseren
         if: env.RELEASE == 'true'
         env:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
-          xcrun notarytool submit "out/$NAME.dmg" --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" \
-            --issuer "$APPLE_API_ISSUER" --wait --timeout 45m --output-format json > notary.json || true
-          cat notary.json
-          STATUS="$(python3 -c 'import json; print(json.load(open("notary.json")).get("status", ""))')"
-          if [ "$STATUS" != "Accepted" ]; then
-            ID="$(python3 -c 'import json; print(json.load(open("notary.json")).get("id", ""))')"
-            [ -n "$ID" ] && xcrun notarytool log "$ID" --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER"
-            exit 1
-          fi
+          packaging/macos/notarize.sh "out/$NAME.dmg"
           xcrun stapler staple "out/$NAME.dmg"
-          xcrun stapler staple "dist/C2PA AI-labeltool.app"
-          spctl --assess --type execute -vv "dist/C2PA AI-labeltool.app"
 
       - name: Zip voor de updater
         run: ditto -c -k --sequesterRsrc --keepParent "dist/C2PA AI-labeltool.app" "out/$NAME.zip"
