@@ -13,3 +13,7 @@ _tools/
 
 # Windows: meegebundelde c2patool.exe (wordt bij de build gedownload)
 bin/
+
+# PyInstaller-builds
+build/
+dist/

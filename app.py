@@ -68,13 +68,40 @@ if MISSING:
 # ---------------------------------------------------------------------------
 # Paden & constanten
 # ---------------------------------------------------------------------------
-ROOT = Path(__file__).resolve().parent
-STATIC_DIR = ROOT / "static"
-ICONS_DIR = ROOT / "icons"
-TEMPLATES_FILE = ROOT / "templates.json"
+from updater import APP_NAME, read_version, user_data_dir  # noqa: E402
 
-ICONS_DIR.mkdir(exist_ok=True)
-STATIC_DIR.mkdir(exist_ok=True)
+# Als kant-en-klare app (PyInstaller) staan de meegeleverde bestanden alleen-
+# lezen in de bundel, en gaan eigen templates en iconen naar een map per
+# gebruiker. Vanuit de broncode (python app.py, of de oude git-installatie)
+# blijft alles naast app.py staan en gedeeld via git.
+FROZEN = bool(getattr(sys, "frozen", False))
+ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+STATIC_DIR = ROOT / "static"
+DATA_DIR = user_data_dir() if FROZEN else ROOT
+ICONS_DIR = DATA_DIR / "icons"  # eigen iconen (uploads)
+TEMPLATES_FILE = DATA_DIR / "templates.json"
+# Wat met de app meekomt; vanuit de broncode zijn dat dezelfde bestanden.
+BUILTIN_ICONS_DIR = ROOT / "icons"
+BUILTIN_TEMPLATES_FILE = ROOT / "templates.json" if FROZEN else None
+# De oude installatie (git-kloon), waar de app-versie eenmalig uit overneemt.
+LEGACY_DIR = Path.home() / "c2pa-ai-tool"
+
+VERSION = read_version(ROOT)
+
+ICONS_DIR.mkdir(parents=True, exist_ok=True)
+if not FROZEN:
+    STATIC_DIR.mkdir(exist_ok=True)
+
+if FROZEN:
+    # c2patool zit in de app. Een app uit de Finder krijgt een kaal PATH, dus
+    # ook de Homebrew-mappen erbij voor een eventuele ffmpeg.
+    _extra = [str(ROOT / "bin")]
+    if sys.platform == "darwin":
+        _extra += ["/opt/homebrew/bin", "/usr/local/bin"]
+    os.environ["PATH"] = os.pathsep.join(_extra + [os.environ.get("PATH", "")])
+
+# Op Windows geen consolevenster laten flitsen bij c2patool/ffmpeg.
+NO_WINDOW = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)} if sys.platform == "win32" else {}
 
 CLAIM_GENERATOR = "EXIT-Toys-C2PA-Tool/1.0"
 
@@ -113,7 +140,7 @@ def c2patool_info():
     version = None
     try:
         out = subprocess.run(
-            [path, "--version"], capture_output=True, text=True, timeout=15
+            [path, "--version"], capture_output=True, text=True, timeout=15, **NO_WINDOW
         )
         version = (out.stdout or out.stderr).strip().splitlines()[0] if (out.stdout or out.stderr) else None
     except Exception:
@@ -125,15 +152,32 @@ def ffmpeg_present():
     return which("ffmpeg") is not None
 
 
+def icon_file(name: str) -> Optional[Path]:
+    """Pad van een icoon: een eigen upload gaat voor, anders het meegeleverde."""
+    if not name or os.path.basename(name) != name:
+        return None
+    for d in (ICONS_DIR, BUILTIN_ICONS_DIR):
+        p = d / name
+        if p.is_file():
+            return p
+    return None
+
+
+def list_icons():
+    names = set()
+    for d in (ICONS_DIR, BUILTIN_ICONS_DIR):
+        names.update(p.name for p in d.glob("*") if p.suffix.lower() == ".png")
+    return sorted(names)
+
+
 # ---------------------------------------------------------------------------
 # Standaard-icoon garanderen
 # ---------------------------------------------------------------------------
 
 
 def ensure_default_icon():
-    """Maak een eenvoudig AI-badge-icoon aan als icons/ nog leeg is."""
-    existing = [p for p in ICONS_DIR.glob("*.png")]
-    if existing:
+    """Maak een eenvoudig AI-badge-icoon aan als er nog geen icoon is."""
+    if list_icons():
         return
     size = 512
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
@@ -196,9 +240,9 @@ def burn_label(src_img: "Image.Image", settings: dict) -> "Image.Image":
 
     # icoon laden + schalen
     icon_name = settings.get("icon") or ""
-    icon_path = (ICONS_DIR / icon_name) if icon_name else None
+    icon_path = icon_file(icon_name)
     icon = None
-    if icon_path and icon_path.exists():
+    if icon_path:
         try:
             icon = Image.open(icon_path).convert("RGBA")
         except Exception:
@@ -386,7 +430,7 @@ def sign_with_c2patool(src: Path, dst: Path, manifest_path: Path):
         "-f",
     ]
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=600, **NO_WINDOW)
     except subprocess.TimeoutExpired:
         return False, "c2patool time-out (>600s)"
     except Exception as e:
@@ -405,6 +449,7 @@ def verify_with_c2patool(path: Path, expected_dst: str):
             capture_output=True,
             text=True,
             timeout=120,
+            **NO_WINDOW,
         )
     except Exception as e:
         return False, f"verificatie mislukt: {e}"
@@ -418,8 +463,8 @@ def verify_with_c2patool(path: Path, expected_dst: str):
 def overlay_video_ffmpeg(src: Path, dst: Path, settings: dict):
     """Brand icoon in een video met ffmpeg. Retourneert (ok, log)."""
     icon_name = settings.get("icon") or ""
-    icon_path = ICONS_DIR / icon_name
-    if not icon_path.exists():
+    icon_path = icon_file(icon_name)
+    if not icon_path:
         return False, "geen icoon voor video-overlay"
     # icoonbreedte relatief aan videobreedte via overlay met scale2ref-achtige aanpak
     size_pct = float(settings.get("size_pct", 7)) / 100.0
@@ -459,7 +504,7 @@ def overlay_video_ffmpeg(src: Path, dst: Path, settings: dict):
         str(dst),
     ]
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=1800, **NO_WINDOW)
     except Exception as e:
         return False, f"ffmpeg-fout: {e}"
     if res.returncode != 0:
@@ -711,18 +756,74 @@ def process_batch(job_id: str, cfg: dict):
 # ---------------------------------------------------------------------------
 
 
-def load_templates():
-    if not TEMPLATES_FILE.exists():
+def _read_template_list(path: Optional[Path]):
+    if not path or not path.exists():
         return []
     try:
-        data = json.loads(TEMPLATES_FILE.read_text(encoding="utf-8") or "[]")
+        data = json.loads(path.read_text(encoding="utf-8") or "[]")
         return data if isinstance(data, list) else []
     except Exception:
         return []
 
 
+def load_user_templates():
+    """De templates in TEMPLATES_FILE: in de app-versie alleen de eigen."""
+    return _read_template_list(TEMPLATES_FILE)
+
+
+def builtin_templates():
+    """De met de app meegeleverde (gedeelde) templates; leeg vanuit de broncode."""
+    return _read_template_list(BUILTIN_TEMPLATES_FILE)
+
+
+def load_templates():
+    """Alle templates zoals de UI ze ziet. In de app-versie de meegeleverde plus
+    de eigen: een eigen template met dezelfde naam gaat voor (zo is een gedeelde
+    aan te passen), en een verwijderde gedeelde blijft weg via een
+    ``hidden``-regel. Een gedeelde template die nergens is aangepast, komt bij
+    een update dus gewoon in de nieuwe vorm mee."""
+    own = load_user_templates()
+    names = {t.get("name") for t in own}
+    items = [t for t in own if not t.get("hidden")]
+    has_default = any(t.get("default") for t in items)
+    shared = []
+    for t in builtin_templates():
+        if t.get("name") in names:
+            continue
+        entry = {**t, "builtin": True}
+        if has_default:
+            entry["default"] = False
+        shared.append(entry)
+    return shared + items
+
+
 def save_templates(items):
     TEMPLATES_FILE.write_text(json.dumps(items, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def migrate_legacy_install():
+    """Eenmalig in de app-versie: eigen templates en iconen uit de oude
+    git-installatie (~/c2pa-ai-tool) overnemen. Wat gelijk is aan de
+    meegeleverde versie slaan we over, zodat die met updates mee blijft gaan."""
+    if not FROZEN or TEMPLATES_FILE.exists() or not LEGACY_DIR.is_dir():
+        return
+    shared = {t.get("name"): t for t in builtin_templates()}
+    own = []
+    for t in _read_template_list(LEGACY_DIR / "templates.json"):
+        if not t.get("name"):
+            continue
+        b = shared.get(t.get("name"))
+        if b and b.get("fields") == t.get("fields"):
+            continue
+        own.append({"name": t["name"], "default": bool(t.get("default")), "fields": t.get("fields") or {}})
+    for p in (LEGACY_DIR / "icons").glob("*"):
+        if p.suffix.lower() == ".png" and not icon_file(p.name):
+            try:
+                shutil.copy2(p, ICONS_DIR / p.name)
+            except OSError:
+                pass
+    # Ook een lege lijst wegschrijven: dat markeert de overname als gedaan.
+    save_templates(own)
 
 
 # Deze velden zijn per-run en horen NIET in een template thuis.
@@ -759,6 +860,12 @@ def _git(args, timeout=30):
         )
     except Exception:
         return None
+
+
+def share(paths, message):
+    """Deel een wijziging via git (broncode-installatie). De app-versie bewaart
+    alles lokaal en deelt niets; de UI toont dan gewoon "opgeslagen"."""
+    return None if FROZEN else git_sync(paths, message)
 
 
 def git_sync(paths, message):
@@ -810,7 +917,29 @@ def git_sync(paths, message):
 
 app = FastAPI(title="EXIT-Toys-C2PA-Tool")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-app.mount("/icons", StaticFiles(directory=str(ICONS_DIR)), name="icons")
+
+LOCAL_HOSTS = {f"localhost:{PORT}", f"127.0.0.1:{PORT}"}
+LOCAL_ORIGINS = {f"http://{h}" for h in LOCAL_HOSTS}
+
+
+@app.middleware("http")
+async def only_local(request, call_next):
+    """Alleen de eigen pagina mag deze API gebruiken. Anders kan elke website in
+    dezelfde browser verzoeken naar localhost sturen (en via DNS-rebinding zelfs
+    de antwoorden lezen) en zo bestanden laten verwerken of vervangen."""
+    host = (request.headers.get("host") or "").lower()
+    origin = (request.headers.get("origin") or "").lower()
+    if host not in LOCAL_HOSTS or (origin and origin not in LOCAL_ORIGINS):
+        return JSONResponse({"detail": "Alleen bereikbaar vanaf deze computer."}, status_code=403)
+    return await call_next(request)
+
+
+@app.get("/icons/{name}")
+def get_icon(name: str):
+    path = icon_file(name)
+    if not path:
+        raise HTTPException(404, "Icoon niet gevonden.")
+    return FileResponse(str(path))
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -826,12 +955,40 @@ def status():
         "c2patool": info,
         "ffmpeg": ffmpeg_present(),
         "claim_generator": CLAIM_GENERATOR,
+        "version": VERSION,
+        "frozen": FROZEN,
     }
+
+
+def busy() -> bool:
+    """Loopt er nog een verwerking?"""
+    return any(j.get("thread") is not None and j["thread"].is_alive() for j in list(JOBS.values()))
+
+
+@app.post("/api/shutdown")
+def api_shutdown():
+    """Stopt de server, zodat de app een nieuwe versie kan starten. Niet tijdens
+    een verwerking: dan blijft deze versie draaien tot de volgende start."""
+    if busy():
+        return {"ok": False, "busy": True}
+    threading.Timer(0.3, lambda: os._exit(0)).start()
+    return {"ok": True}
 
 
 @app.get("/api/version")
 def api_version():
-    """Vergelijk de lokale versie met GitHub (origin/<branch>)."""
+    """App-versie: vergelijk met de update-feed. Broncode: vergelijk de lokale
+    commit met GitHub (origin/<branch>)."""
+    if FROZEN:
+        from updater import is_newer, latest_version
+
+        latest = latest_version(VERSION)
+        return {
+            "app": True,
+            "version": VERSION,
+            "latest": latest,
+            "up_to_date": None if latest is None else not is_newer(latest, VERSION),
+        }
     if not (ROOT / ".git").exists() or not which("git"):
         return {"git": False}
     env = {
@@ -881,8 +1038,7 @@ def api_version():
 
 @app.get("/api/icons")
 def api_icons():
-    icons = sorted([p.name for p in ICONS_DIR.glob("*.png")] + [p.name for p in ICONS_DIR.glob("*.PNG")])
-    return {"icons": icons}
+    return {"icons": list_icons()}
 
 
 @app.post("/api/icons")
@@ -897,7 +1053,7 @@ async def upload_icon(file: UploadFile = File(...)):
         raise HTTPException(400, "Ongeldig PNG-bestand.")
     dest = ICONS_DIR / name
     dest.write_bytes(data)
-    sync = git_sync([f"icons/{name}"], f"Icoon toevoegen/bijwerken: {name}")
+    sync = share([f"icons/{name}"], f"Icoon toevoegen/bijwerken: {name}")
     return {"ok": True, "name": name, "sync": sync}
 
 
@@ -1098,51 +1254,62 @@ async def api_save_template(payload: dict):
     fields = clean_template_fields(payload.get("fields") or {})
     overwrite = bool(payload.get("overwrite"))
     make_default = bool(payload.get("default"))
-    items = load_templates()
-    idx = next((i for i, t in enumerate(items) if t.get("name") == name), None)
-    if idx is not None and not overwrite:
+    if any(t.get("name") == name for t in load_templates()) and not overwrite:
         raise HTTPException(409, f"Template '{name}' bestaat al.")
+    # Altijd in de eigen lijst; een gedeelde met dezelfde naam wordt zo
+    # overschaduwd, en een eerder verborgen gedeelde komt zo weer terug.
+    own = load_user_templates()
     entry = {"name": name, "default": make_default, "fields": fields}
+    idx = next((i for i, t in enumerate(own) if t.get("name") == name), None)
     if idx is not None:
-        items[idx] = entry
+        own[idx] = entry
     else:
-        items.append(entry)
+        own.append(entry)
     if make_default:
-        for t in items:
-            t["default"] = t.get("name") == name
-    save_templates(items)
-    sync = git_sync(["templates.json"], f"Template opslaan: {name}")
-    return {"ok": True, "templates": items, "sync": sync}
+        for t in own:
+            if not t.get("hidden"):
+                t["default"] = t.get("name") == name
+    save_templates(own)
+    sync = share(["templates.json"], f"Template opslaan: {name}")
+    return {"ok": True, "templates": load_templates(), "sync": sync}
 
 
 @app.put("/api/templates/{name}")
 async def api_update_template(name: str, payload: dict):
-    items = load_templates()
-    idx = next((i for i, t in enumerate(items) if t.get("name") == name), None)
-    if idx is None:
+    current = next((t for t in load_templates() if t.get("name") == name), None)
+    if current is None:
         raise HTTPException(404, f"Template '{name}' niet gevonden.")
-    items[idx]["fields"] = clean_template_fields(payload.get("fields") or {})
+    own = load_user_templates()
+    idx = next((i for i, t in enumerate(own) if t.get("name") == name and not t.get("hidden")), None)
+    if idx is None:
+        # Een gedeelde template aanpassen: als eigen kopie bewaren.
+        own = [t for t in own if t.get("name") != name]
+        own.append({"name": name, "default": bool(current.get("default")), "fields": {}})
+        idx = len(own) - 1
+    own[idx]["fields"] = clean_template_fields(payload.get("fields") or {})
     if "default" in payload:
         md = bool(payload["default"])
         if md:
-            for t in items:
-                t["default"] = t.get("name") == name
+            for t in own:
+                if not t.get("hidden"):
+                    t["default"] = t.get("name") == name
         else:
-            items[idx]["default"] = False
-    save_templates(items)
-    sync = git_sync(["templates.json"], f"Template bijwerken: {name}")
-    return {"ok": True, "templates": items, "sync": sync}
+            own[idx]["default"] = False
+    save_templates(own)
+    sync = share(["templates.json"], f"Template bijwerken: {name}")
+    return {"ok": True, "templates": load_templates(), "sync": sync}
 
 
 @app.delete("/api/templates/{name}")
 def api_delete_template(name: str):
-    items = load_templates()
-    new = [t for t in items if t.get("name") != name]
-    if len(new) == len(items):
+    if not any(t.get("name") == name for t in load_templates()):
         raise HTTPException(404, f"Template '{name}' niet gevonden.")
-    save_templates(new)
-    sync = git_sync(["templates.json"], f"Template verwijderen: {name}")
-    return {"ok": True, "templates": new, "sync": sync}
+    own = [t for t in load_user_templates() if t.get("name") != name]
+    if any(t.get("name") == name for t in builtin_templates()):
+        own.append({"name": name, "hidden": True})
+    save_templates(own)
+    sync = share(["templates.json"], f"Template verwijderen: {name}")
+    return {"ok": True, "templates": load_templates(), "sync": sync}
 
 
 @app.post("/api/preview")
@@ -1326,6 +1493,7 @@ def open_browser():
 
 
 def main():
+    migrate_legacy_install()
     ensure_default_icon()
     info = c2patool_info()
     banner = "=" * 64

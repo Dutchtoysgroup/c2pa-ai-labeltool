@@ -1,0 +1,246 @@
+name: Release
+
+# Een tag vX.Y.Z (gelijk aan VERSION) bouwt de app voor macOS (Apple-chip en
+# Intel, ondertekend en genotariseerd) en Windows (installer), en publiceert ze
+# als GitHub Release met latest.json voor de update-feed op het dashboard
+# (https://dashboard-exit.com/labeltool). Pull requests en handmatige runs
+# bouwen en testen alleen, zonder ondertekenen of publiceren.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  C2PATOOL_VERSION: '0.27.15'
+  # python.org-installer: draait vanaf macOS 11, waar een Python van de runner
+  # alleen op de macOS-versie van de runner zelf zou starten.
+  PYTHON_VERSION: '3.13.9'
+  RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
+
+jobs:
+  macos:
+    name: macOS (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            key: mac-arm64
+            label: Apple-Silicon
+          # PyInstaller bouwt niet cross: Intel op een Intel-runner.
+          - runner: macos-15-intel
+            arch: x86_64
+            key: mac-x64
+            label: Intel
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versie
+        run: |
+          V="$(cat VERSION)"
+          if [ "$RELEASE" = true ] && [ "v$V" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME past niet bij VERSION ($V)"; exit 1
+          fi
+          echo "VERSION=$V" >> "$GITHUB_ENV"
+          echo "NAME=C2PA-AI-labeltool-$V-macOS-${{ matrix.label }}" >> "$GITHUB_ENV"
+
+      - name: Python en pakketten
+        run: |
+          curl -fsSLO "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-macos11.pkg"
+          sudo installer -pkg "python-${PYTHON_VERSION}-macos11.pkg" -target /
+          "/Library/Frameworks/Python.framework/Versions/${PYTHON_VERSION%.*}/bin/python3" -m venv venv
+          venv/bin/python -m pip install -q --upgrade pip
+          venv/bin/python -m pip install -q -r requirements.txt -r packaging/requirements-build.txt
+
+      - name: c2patool
+        run: |
+          mkdir -p build/c2patool
+          curl -fsSL -o c2patool.zip "https://github.com/contentauth/c2pa-rs/releases/download/c2patool-v${C2PATOOL_VERSION}/c2patool-v${C2PATOOL_VERSION}-universal-apple-darwin.zip"
+          unzip -oq c2patool.zip -d c2patool-x
+          find c2patool-x -type f -name c2patool -exec cp {} build/c2patool/c2patool \;
+          chmod +x build/c2patool/c2patool
+          build/c2patool/c2patool --version
+
+      # Developer ID (zelfde certificaat als EXIT SEO Crawler) in een tijdelijke
+      # sleutelhanger die met de runner verdwijnt. PyInstaller ondertekent
+      # daarmee elk binair bestand met hardened runtime.
+      - name: Certificaat importeren
+        if: env.RELEASE == 'true'
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          if [ -z "$CSC_LINK" ] || [ -z "$APPLE_API_KEY_P8" ]; then
+            echo "::error::Secrets voor ondertekenen/notariseren ontbreken"; exit 1
+          fi
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          printf '%s' "$CSC_LINK" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          rm "$RUNNER_TEMP/cert.p12"
+          curl -sfL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o "$RUNNER_TEMP/DeveloperIDG2CA.cer"
+          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$KEYCHAIN" || true
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          security find-identity -v -p codesigning "$KEYCHAIN"
+          printf '%s' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+          echo "APPLE_API_KEY=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
+          echo "C2PA_CODESIGN_IDENTITY=Developer ID Application: Sven Dijk (VAM683M962)" >> "$GITHUB_ENV"
+
+      - name: App bouwen
+        env:
+          C2PA_TARGET_ARCH: ${{ matrix.arch }}
+        run: venv/bin/pyinstaller --noconfirm --distpath dist --workpath build/pyinstaller packaging/c2pa-labeltool.spec
+
+      - name: Zelftest
+        run: |
+          APP="dist/C2PA AI-labeltool.app"
+          lipo -archs "$APP/Contents/MacOS/C2PA AI-labeltool"
+          C2PA_SELFTEST_OUT=selftest.json "$APP/Contents/MacOS/C2PA AI-labeltool" --selftest
+          cat selftest.json
+          codesign --verify --deep --strict "$APP"
+
+      - name: Schijfkopie
+        run: |
+          mkdir -p dmgroot out
+          ditto "dist/C2PA AI-labeltool.app" "dmgroot/C2PA AI-labeltool.app"
+          ln -s /Applications dmgroot/Applications
+          hdiutil create -volname "C2PA AI-labeltool" -srcfolder dmgroot -ov -format UDZO "out/$NAME.dmg"
+          if [ "$RELEASE" = true ]; then
+            codesign -s "$C2PA_CODESIGN_IDENTITY" --timestamp "out/$NAME.dmg"
+          fi
+
+      # Eén keer notariseren (de .dmg, met de app erin); daarna krijgen de .dmg
+      # en de app zelf hun ticket, zodat ze ook offline zonder melding openen.
+      - name: Notariseren
+        if: env.RELEASE == 'true'
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          xcrun notarytool submit "out/$NAME.dmg" --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" \
+            --issuer "$APPLE_API_ISSUER" --wait --timeout 45m --output-format json > notary.json || true
+          cat notary.json
+          STATUS="$(python3 -c 'import json; print(json.load(open("notary.json")).get("status", ""))')"
+          if [ "$STATUS" != "Accepted" ]; then
+            ID="$(python3 -c 'import json; print(json.load(open("notary.json")).get("id", ""))')"
+            [ -n "$ID" ] && xcrun notarytool log "$ID" --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER"
+            exit 1
+          fi
+          xcrun stapler staple "out/$NAME.dmg"
+          xcrun stapler staple "dist/C2PA AI-labeltool.app"
+          spctl --assess --type execute -vv "dist/C2PA AI-labeltool.app"
+
+      - name: Zip voor de updater
+        run: ditto -c -k --sequesterRsrc --keepParent "dist/C2PA AI-labeltool.app" "out/$NAME.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.key }}
+          path: out/*
+          if-no-files-found: error
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Versie
+        run: |
+          $v = (Get-Content VERSION -Raw).Trim()
+          if ($env:RELEASE -eq 'true' -and "v$v" -ne $env:GITHUB_REF_NAME) {
+            Write-Error "Tag $env:GITHUB_REF_NAME past niet bij VERSION ($v)"; exit 1
+          }
+          "VERSION=$v" >> $env:GITHUB_ENV
+
+      - name: Pakketten
+        run: |
+          python -m pip install -q --upgrade pip
+          python -m pip install -q -r requirements.txt -r packaging/requirements-build.txt
+
+      - name: c2patool
+        run: |
+          New-Item -ItemType Directory -Force build\c2patool | Out-Null
+          $url = "https://github.com/contentauth/c2pa-rs/releases/download/c2patool-v$env:C2PATOOL_VERSION/c2patool-v$env:C2PATOOL_VERSION-x86_64-pc-windows-msvc.zip"
+          Invoke-WebRequest -UseBasicParsing $url -OutFile c2patool.zip
+          Expand-Archive c2patool.zip -DestinationPath c2patool-x -Force
+          Copy-Item (Get-ChildItem -Recurse c2patool-x -Filter c2patool.exe | Select-Object -First 1).FullName build\c2patool\c2patool.exe
+          build\c2patool\c2patool.exe --version
+
+      - name: App bouwen
+        run: pyinstaller --noconfirm --distpath dist --workpath build/pyinstaller packaging/c2pa-labeltool.spec
+
+      - name: Zelftest
+        run: |
+          $exe = "dist\C2PA AI-labeltool\C2PA AI-labeltool.exe"
+          $env:C2PA_SELFTEST_OUT = "$PWD\selftest.json"
+          $p = Start-Process -FilePath $exe -ArgumentList "--selftest" -Wait -PassThru
+          Get-Content selftest.json
+          if ($p.ExitCode -ne 0) { exit 1 }
+          # De server zelf: start hij en antwoordt hij?
+          $env:C2PA_SELFTEST_OUT = ""
+          $s = Start-Process -FilePath $exe -ArgumentList "--server" -PassThru
+          $ok = $false
+          for ($i = 0; $i -lt 60; $i++) {
+            Start-Sleep -Milliseconds 500
+            try { $st = Invoke-RestMethod http://127.0.0.1:8000/api/status; $ok = $st.c2patool.present; break } catch {}
+          }
+          Stop-Process -Id $s.Id -Force -ErrorAction SilentlyContinue
+          if (-not $ok) { Write-Error "Server startte niet"; exit 1 }
+
+      - name: Installer
+        run: |
+          choco install innosetup --no-progress -y | Out-Null
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Q "/DAppVersion=$env:VERSION" packaging\windows\installer.iss
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Get-ChildItem dist\*.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*.exe
+          if-no-files-found: error
+
+  publish:
+    name: Publiceren
+    needs: [macos, windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
+      - name: latest.json
+        run: |
+          python3 packaging/make_manifest.py out > out/latest.json
+          cat out/latest.json
+          ls -la out
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: out/*
+          generate_release_notes: true

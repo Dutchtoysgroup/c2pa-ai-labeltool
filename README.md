@@ -10,152 +10,53 @@ Zo dek je in één stap zowel het **zichtbare label** als de **machine-leesbare
 markering** die de EU AI Act (artikel 50) voor AI-content vereist.
 
 De **beeldverwerking draait volledig lokaal**: je beelden worden op je eigen
-machine gelabeld en ondertekend en gaan naar geen enkele externe (AI-)dienst.
-Alleen je **templates en iconen** worden — als je git-toegang hebt — met de
-gedeelde repo gesynchroniseerd, en de app haalt bij het starten de nieuwste
-code van GitHub op (zie hieronder).
+computer gelabeld en ondertekend en gaan naar geen enkele externe (AI-)dienst.
 
 ---
 
-## Installatie op macOS — zo krijg je de app
+## Installeren
 
-**Dit is de standaardmanier om de app te installeren.** Je hebt toegang tot deze
-repo nodig (`Dutchtoysgroup/c2pa-ai-labeltool`) — vraag de beheerder of je bent
-toegevoegd.
+Download de app op **<https://dashboard-exit.com/labeltool>** (zonder inlog):
 
-1. Pak **`install.command`** (download het uit deze repo via **Code → download**,
-   of ontvang `Installeer C2PA AI-labeltool.zip` van de beheerder en pak het uit).
-2. **Rechtermuisklik → Open** op `install.command` (eenmalig; vanwege
-   macOS-beveiliging wordt een gewone dubbelklik geblokkeerd).
-3. **Log één keer in bij GitHub** in de browser (opent vanzelf).
-4. Klaar. De app wordt opgehaald, gebouwd en gestart, en staat voortaan in
-   **Programma's**. Vanaf dan werkt hij zichzelf bij vanaf GitHub.
+- **macOS** — `.dmg` voor een Mac met Apple-chip of met Intel-processor. Open
+  hem en sleep **C2PA AI-labeltool** naar Programma's. De app is ondertekend en
+  door Apple gecontroleerd, dus hij opent zonder waarschuwing.
+- **Windows** — `Setup.exe`. Installeert alleen voor jou, zonder
+  beheerdersrechten. De installer is nog niet ondertekend: kies bij "Windows
+  heeft uw pc beschermd" voor **Meer informatie** → **Toch uitvoeren**.
 
-De installer regelt de rest zelf: git, het GitHub-hulpje (`gh`) en `c2patool`.
-Werkt op Apple Silicon én Intel-Macs.
+Alles zit in de app: Python, de pakketten en `c2patool`. Je hebt geen
+GitHub-account, git of Python nodig.
 
-> **Beheerder:** deel `install.command` met collega's als **.zip** (dan blijft het
-> uitvoerbaar), bijvoorbeeld via Box, en zorg dat ze toegang hebben tot de repo.
+## Starten
 
-## Starten (macOS) — gewoon dubbelklikken
+Dubbelklik op **C2PA AI-labeltool** (Programma's, Spotlight of Launchpad op de
+Mac; Startmenu of bureaublad op Windows). De tool opent in je browser op
+<http://localhost:8000>. De server blijft op de achtergrond draaien; opnieuw
+dubbelklikken opent de tool weer.
 
-Er staat een echte macOS-app: **`C2PA AI-labeltool`** (in je map Programma's /
-Applications, ook via Spotlight of Launchpad te vinden).
+## Bijwerken
 
-1. Dubbelklik op **C2PA AI-labeltool**.
-2. De tool opent vanzelf in je browser op <http://localhost:8000>.
+Gaat vanzelf. Bij elke start kijkt de app op
+`https://dashboard-exit.com/labeltool/update` of er een nieuwere versie is en
+installeert die dan eerst. Op de Mac alleen als de nieuwe versie door hetzelfde
+team is ondertekend en door Apple is gecontroleerd. Loopt er nog een
+verwerking, dan wacht de update tot de volgende start. De versie-badge in de
+tool toont of je de nieuwste hebt.
 
-Meer is er niet: `c2patool` zit **in de app ingebouwd** en de eerste keer zet de
-app zelf de Python-omgeving op (virtualenv + pakketten; eenmalig, internet
-nodig). Python 3 moet wél aanwezig zijn — via de installer komt dat mee met
-Apple's ontwikkeltools. Geen terminal.
+## Templates en iconen
 
-> **Versie-indicator:** de header toont of je versie gelijk is aan GitHub
-> (“Up-to-date”) of dat er nieuwere code klaarstaat (“Update beschikbaar” —
-> heropen de app om bij te werken).
-
-> **Zelf bijwerken:** elke keer dat je de app opent, haalt hij eerst de
-> nieuwste versie van GitHub op (`Dutchtoysgroup/c2pa-ai-labeltool`) en start
-> die. GitHub is dus de bron; je Mac draait een automatisch bijgewerkte kopie.
-> Offline? Dan start hij gewoon de laatste lokale versie.
-
-> De app is een lichte “launcher” die de code in `~/c2pa-ai-tool` start. Blijft
-> de app op de achtergrond draaien; elke keer dat je 'm opent, komt de tool weer
-> in beeld.
-
-### App (opnieuw) bouwen
-
-Verplaats je het project of wil je de app opnieuw aanmaken:
-
-```bash
-bash ~/c2pa-ai-tool/macapp/build_mac_app.sh
-```
-
-Dat zet `C2PA AI-labeltool.app` in `/Applications` (of `~/Applications`) met
-`c2patool` meegebundeld.
-
-## Installatie op Windows 11 — zo krijg je de app
-
-Op Windows draait de tool **exact hetzelfde** (dezelfde interface in de browser).
-Je hebt toegang tot de repo nodig (`Dutchtoysgroup/c2pa-ai-labeltool`).
-
-1. Pak **`install.bat`** én **`install.ps1`** (download ze uit deze repo, of
-   ontvang `Installeer C2PA AI-labeltool (Windows).zip` van de beheerder en pak
-   het uit — houd beide bestanden in dezelfde map).
-2. **Dubbelklik op `install.bat`**. Er opent een venster dat alles regelt.
-3. **Log één keer in bij GitHub** in de browser (opent vanzelf).
-4. Klaar. De app staat voortaan in het **Startmenu** en op het **bureaublad**;
-   dubbelklik erop om te starten. Vanaf dan werkt hij zichzelf bij vanaf GitHub.
-
-De installer regelt de rest zelf via **winget**: git, Python 3, het
-GitHub-hulpje (`gh`) en `c2patool`. (winget/“App Installer” zit standaard op
-Windows 11; ontbreekt het, installeer dan **App Installer** uit de Microsoft
-Store en start de installer opnieuw.)
-
-> **Openen:** dubbelklik op **C2PA AI-labeltool** (Startmenu of bureaublad). De
-> tool opent vanzelf op <http://localhost:8000> en werkt precies als op macOS —
-> ook hier haalt de app bij elke start de nieuwste versie van GitHub op.
-
-> **App opnieuw bouwen / snelkoppelingen herstellen** (bv. na verplaatsen):
-> ```powershell
-> powershell -ExecutionPolicy Bypass -File $HOME\c2pa-ai-tool\winapp\build_win_app.ps1
-> ```
-
-> **Beheerder:** deel `install.bat` + `install.ps1` samen als **.zip** met
-> collega's en zorg dat ze toegang tot de repo hebben.
-
-## Handmatige installatie (gevorderd)
-
-Liever zonder de installer? Op een Mac met git + Python 3:
-
-```bash
-git clone https://github.com/Dutchtoysgroup/c2pa-ai-labeltool.git ~/c2pa-ai-tool
-cd ~/c2pa-ai-tool
-bash macapp/build_mac_app.sh
-```
-
-Dat bouwt dezelfde app (met `c2patool` automatisch meegedownload).
-
-Op **Windows** (PowerShell):
-
-```powershell
-git clone https://github.com/Dutchtoysgroup/c2pa-ai-labeltool.git $HOME\c2pa-ai-tool
-powershell -ExecutionPolicy Bypass -File $HOME\c2pa-ai-tool\winapp\build_win_app.ps1
-```
-
-## Starten via de terminal (alternatief / andere platforms)
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate        # macOS/Linux
-# .venv\Scripts\activate         # Windows
-python -m pip install -r requirements.txt
-python app.py                    # opent http://localhost:8000
-```
-
-Ontbreekt een Python-pakket, dan print `app.py` een duidelijke install-instructie
-en stopt. Voor deze route moet `c2patool` wél op je `PATH` staan (zie hieronder).
-
-## c2patool installeren
-
-De tool schakelt `c2patool` (de officiële C2PA-CLI) als ondertekenmotor.
-Zonder `c2patool` op je `PATH` blijft de **Start-knop uitgeschakeld**.
-
-**Optie A — via Rust/Cargo (aanbevolen):**
-
-```bash
-cargo install c2patool
-```
-
-(Heb je nog geen Rust: installeer via <https://rustup.rs>.)
-
-**Optie B — kant-en-klare binary:** download de nieuwste release voor jouw
-platform van <https://github.com/contentauth/c2pa-rs> (map `c2patool`) en zet het
-binary in een map die op je `PATH` staat. Op macOS bv. `/usr/local/bin`; op
-Windows het bestand `c2patool.exe` (uit `…-x86_64-pc-windows-msvc.zip`) in een
-PATH-map — of gebruik gewoon de installer hierboven, die dit automatisch doet.
-
-Controleer: `c2patool --version`.
+- **Gedeelde** templates en iconen (zoals "EXIT Toys - Standaard Ai") zitten in
+  de app en komen met elke update mee. Ze staan in deze repo: `templates.json`
+  en `icons/`. Wil je er een toevoegen of aanpassen, wijzig het hier en maak
+  een nieuwe release.
+- **Eigen** templates en iconen bewaart de app op je eigen computer:
+  `~/Library/Application Support/C2PA AI-labeltool` (macOS) of
+  `%APPDATA%\C2PA AI-labeltool` (Windows). Een gedeelde template aanpassen
+  maakt er een eigen kopie van; verwijderen verbergt hem alleen voor jou.
+- Had je de oude versie (de git-installatie in `~/c2pa-ai-tool`), dan neemt de
+  app bij de eerste start je eigen templates en iconen daaruit over. Die map kun
+  je daarna weggooien.
 
 ## ffmpeg (optioneel, alleen voor video)
 
@@ -172,12 +73,9 @@ Installeer op macOS met `brew install ffmpeg`.
   “Foxy — volledig AI”, “Productfoto — composite”) en herlaad ze; je hoeft dan
   alleen nog het invoer-mappad per run in te vullen. Het invoerpad wordt bewust
   *niet* in de template bewaard. Templates staan in `templates.json`.
-- **Automatisch delen via GitHub**: zodra je een template opslaat, bijwerkt of
-  verwijdert, of een icoon uploadt, wordt dat direct gecommit en naar de repo
-  gepusht. Zo ziet iederéén die de tool gebruikt dezelfde templates en iconen.
-  Een melding in beeld bevestigt of het delen via GitHub gelukt is; lukt het
-  pushen niet (bijv. offline of geen push-rechten), dan blijft de wijziging in
-  elk geval lokaal bewaard.
+- **Gedeelde en eigen templates**: zie [Templates en iconen](#templates-en-iconen).
+  Draai je de tool vanuit de broncode (zie Ontwikkelen), dan wordt een
+  opgeslagen template of geüpload icoon nog wel meteen gecommit en gepusht.
 - **Invoer** → kies wat je verwerkt:
   - **Map…** opent een mapkiezer (Finder op macOS, Verkenner op Windows), of plak een absoluut pad; de hele map
     wordt verwerkt (met *Ook submappen* eventueel recursief).
@@ -252,38 +150,71 @@ sommige social platforms) **strippen C2PA-metadata vaak weg**. Daarom:
 
 ---
 
-## Ontwikkelen — let op de Python-versie
+## Ontwikkelen
 
-De tool draait op de Python die al op de Mac/pc staat. Veel (collega-)Macs hebben
-**alleen de ingebouwde Python 3.9** van macOS. Houd de code daarom compatibel met
-**Python 3.9 t/m 3.13**:
+### Een nieuwe versie uitbrengen
 
-- **Geen** PEP 604-union-syntax (`dict | None`) in annotaties op FastAPI-endpoints
-  — FastAPI evalueert die bij het opstarten en dat crasht op 3.9. Gebruik
-  `Optional[dict]` (met `from typing import Optional`).
-- **Geen** andere 3.10+-only syntax (zoals `match`/`case`).
+1. Zet het nieuwe versienummer in `VERSION` (bijv. `2.0.1`) en commit.
+2. Tag en push: `git tag v2.0.1 && git push origin main v2.0.1`.
+3. De workflow `Release` bouwt de app voor macOS (Apple-chip en Intel,
+   ondertekend en genotariseerd met het Developer ID van Dutch Toys Group) en
+   Windows, en publiceert ze met `latest.json` als GitHub Release. De
+   downloadpagina en de update-feed op het dashboard pakken die vanzelf op.
 
-Snelle controle met de ingebouwde 3.9 vóór je pusht:
+Pull requests bouwen en testen de app ook, zonder te ondertekenen of te
+publiceren. Benodigde secrets: `CSC_LINK` (base64 van de .p12), `CSC_KEY_PASSWORD`,
+`APPLE_API_KEY_P8`, `APPLE_API_KEY_ID` en `APPLE_API_ISSUER`, dezelfde als bij
+EXIT SEO Crawler.
+
+### Lokaal bouwen
 
 ```bash
-/usr/bin/python3 -m py_compile app.py
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt -r packaging/requirements-build.txt
+# c2patool in build/c2patool/ zetten (zie de workflow), dan:
+.venv/bin/pyinstaller --noconfirm --distpath dist --workpath build/pyinstaller packaging/c2pa-labeltool.spec
+```
+
+`dist/C2PA AI-labeltool.app --selftest` controleert of alles in de app zit.
+
+### Vanuit de broncode draaien
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python app.py          # opent http://localhost:8000
+```
+
+`c2patool` moet dan zelf op je `PATH` staan (`cargo install c2patool`, of een
+binary van <https://github.com/contentauth/c2pa-rs>). In deze modus staan
+templates en iconen in de repo zelf en worden wijzigingen meteen gecommit en
+gepusht. Zo werkt ook de oude installatie (`install.command`, `install.bat`),
+die bij elke start `git pull` doet; die blijft werken.
+
+De broncode moet daarom op **Python 3.9 t/m 3.13** draaien: veel oude
+installaties gebruiken de ingebouwde Python 3.9 van macOS. Dus **geen**
+`dict | None` in annotaties op FastAPI-endpoints (gebruik `Optional[dict]`) en
+geen `match`/`case`. Controle vóór je pusht:
+
+```bash
+/usr/bin/python3 -m py_compile app.py updater.py desktop.py
 ```
 
 ## Projectstructuur
 
 ```
 app.py            FastAPI-backend + verwerkingslogica
+desktop.py        Startpunt van de app: update, server starten, browser openen
+updater.py        Versie, gebruikersmap en de update-feed
+VERSION           Versienummer van de app
 static/index.html Single-page UI (vanilla HTML/CSS/JS, geen build-stap)
 requirements.txt  Python-dependencies
-templates.json    Opgeslagen templates — automatisch gedeeld via de repo
-icons/            Icoonbestanden (PNG met transparantie); een AI-badge wordt
-                  automatisch aangemaakt als de map leeg is
+templates.json    Gedeelde templates (zitten in de app)
+icons/            Gedeelde iconen (PNG met transparantie)
 certs/test/       Meegeleverd es256 TEST-certificaat (untrusted, alleen testen)
-macapp/           macOS: bouwscript + launcher + icoon voor de dubbelklik-app
-winapp/           Windows: launcher + bouwscript (snelkoppelingen + c2patool.exe)
-install.command   macOS-installer (git/gh/clone/build)
-install.bat       Windows-installer (dubbelklik) -> roept install.ps1 aan
-install.ps1       Windows-installer (winget/gh/clone/build)
+packaging/        PyInstaller-recept, Mac-entitlements, Windows-installer, latest.json
+.github/workflows Release-workflow
+macapp/, winapp/  Oude installatie: launcher + bouwscripts (git pull bij elke start)
+install.*         Oude installers (git + GitHub-login)
 ```
 
 ## Ondersteunde bestandstypen
