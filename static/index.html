@@ -691,6 +691,22 @@ async function refreshVersion(){
   const b=$('verBadge'); if(!b) return;
   try{
     const v=await (await fetch('/api/version')).json();
+    if(v.app){
+      // Kant-en-klare app: versienummer t.o.v. de update-feed.
+      b.style.display='';
+      const label='Versie '+v.version;
+      if(v.up_to_date===false){
+        b.className='badge upd'; b.textContent=label+' — update';
+        b.title=`Versie ${v.latest} staat klaar. Open de app opnieuw om bij te werken.`;
+      } else if(v.up_to_date===true){
+        b.className='badge ok'; b.textContent=label;
+        b.title='Actueel — dit is de nieuwste versie.';
+      } else {
+        b.className='badge info'; b.textContent=label;
+        b.title='Kon niet controleren op updates (offline?).';
+      }
+      return;
+    }
     if(!v.git){ b.style.display='none'; return; }
     b.style.display='';
     const datum=fmtVersieDatum(v.when);
