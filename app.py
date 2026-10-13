@@ -519,6 +519,9 @@ def overlay_video_ffmpeg(src: Path, dst: Path, settings: dict):
 # ---------------------------------------------------------------------------
 
 JOBS: dict[str, dict] = {}
+# Herhaalpogingen per run (api_retry). Apart van JOBS, omdat api_stream een job
+# opruimt zodra hij klaar is; alleen die van de laatste runs bewaren we.
+RETRIES: dict[str, dict] = {}
 
 
 def collect_files(root: Path, recursive: bool):
@@ -704,8 +707,10 @@ def process_batch(job_id: str, cfg: dict):
     def emit(ev: dict):
         q.put(ev)
 
-    def log(status, name, msg, layers=""):
-        emit({"type": "log", "status": status, "file": name, "msg": msg, "layers": layers})
+    def log(status, name, msg, steps=()):
+        # steps: (laag, gelukt) per aangevraagde bewerking
+        emit({"type": "log", "status": status, "file": name, "msg": msg,
+              "steps": [{"name": n, "ok": ok} for n, ok in steps]})
 
     try:
         in_dir = Path(cfg["input_dir"]).expanduser()
@@ -751,19 +756,34 @@ def process_batch(job_id: str, cfg: dict):
             return
 
         # Namen in het log en in de uitvoermap relatief aan de invoermap, of bij
-        # losse bestanden aan de diepste map waar ze allemaal onder vallen.
-        base = common_base(all_files) if selected else in_dir
+        # losse bestanden aan de diepste map waar ze allemaal onder vallen. Een
+        # herhaalpoging (api_retry) neemt basis en uitvoerpaden over van de
+        # eerste run, zodat hij precies dezelfde uitvoerbestanden overschrijft.
+        pinned = cfg.get("_pinned") or {}
+        if "base" in pinned:
+            base = Path(pinned["base"]) if pinned["base"] else None
+        else:
+            base = common_base(all_files) if selected else in_dir
         shown = {f: str(relative_name(f, base)) for f in all_files}
         outputs = plan_outputs(work, base, out_dir) if out_dir is not None else {}
+        for f in work:
+            if str(f) in pinned.get("outputs", {}):
+                outputs[f] = Path(pinned["outputs"][str(f)])
         sources = {_path_key(f.resolve()) for f in all_files}
+
+        def out_name(p: Path) -> str:
+            try:
+                return str(p.relative_to(out_dir))
+            except ValueError:
+                return str(p)
 
         out_label = "originelen worden vervangen" if replace_originals else str(out_dir)
         emit({"type": "start", "total": total, "output": out_label, "replace": replace_originals})
 
         for f in work:
-            if f in outputs and str(outputs[f].relative_to(out_dir)) != shown[f]:
+            if f in outputs and out_name(outputs[f]) != shown[f]:
                 log("INFO", shown[f], f"zelfde uitvoerpad als een ander bestand: wordt "
-                    f"{outputs[f].relative_to(out_dir)}")
+                    f"{out_name(outputs[f])}")
 
         manifest = build_manifest(cfg)
         do_visible = cfg.get("burn_icon", True)
@@ -771,8 +791,9 @@ def process_batch(job_id: str, cfg: dict):
         have_ffmpeg = ffmpeg_present()
         expected_dst = DIGITAL_SOURCE_TYPES[cfg["bronsoort"]]
 
-        n_signed = n_skipped = n_error = 0
+        n_signed = n_partial = n_skipped = n_error = 0
         processed = 0
+        retry = []  # bestanden waarvan het gevraagde zichtbare label mislukte
 
         for f in skipped_unsupported:
             log("SKIP", shown[f], "niet-ondersteund bestandstype")
@@ -800,7 +821,9 @@ def process_batch(job_id: str, cfg: dict):
                 # daarna terug op exact de originele (extensieloze) naam.
                 sign_out = final_out if name_has_ext else (tmpdir / ("signed_" + f.name + ext))
                 tmp_suffix = "" if name_has_ext else ext
-                layers = []
+                steps = []          # (laag, gelukt) per aangevraagde bewerking
+                stage = ""          # laag die nu loopt; mislukt als er een fout volgt
+                label_missing = ""  # waarom het gevraagde zichtbare label ontbreekt
                 try:
                     # Een backup van een eerder mislukte vervanging kan het enige
                     # intacte origineel zijn: eerst laten nakijken, niet overschrijven.
@@ -822,24 +845,34 @@ def process_batch(job_id: str, cfg: dict):
 
                     # ----- Stap 1: zichtbaar label -----
                     if do_visible:
+                        stage = "icoon"
                         if ext in IMAGE_EXT:
                             with Image.open(f) as im:
                                 info = dict(im.info)
                                 labeled = burn_label(im, cfg["label"])
                             working = tmpdir / (f.name + tmp_suffix)
                             save_like_original(labeled, working, info)
-                            layers.append("icoon")
+                            steps.append(("icoon", True))
                         elif ext in VIDEO_EXT:
                             if have_ffmpeg:
                                 vtmp = tmpdir / (f.name + tmp_suffix)
                                 ok, vmsg = overlay_video_ffmpeg(f, vtmp, cfg["label"])
                                 if ok:
                                     working = vtmp
-                                    layers.append("icoon")
+                                    steps.append(("icoon", True))
                                 else:
-                                    log("INFO", shown[f], f"video-overlay overgeslagen: {vmsg}")
+                                    label_missing = f"video-overlay mislukt: {vmsg}"
                             else:
-                                log("INFO", shown[f], "geen ffmpeg: zichtbaar label overgeslagen voor video")
+                                label_missing = "geen ffmpeg gevonden"
+                            if label_missing:
+                                steps.append(("icoon", False))
+                                retry.append(f)
+                                # Bevestigd is vervangen door een gelabelde versie;
+                                # een ongelabelde zou bovendien een retry dubbel laten tekenen.
+                                if replace_originals:
+                                    raise RuntimeError(
+                                        f"zichtbaar label ontbreekt ({label_missing}); origineel niet vervangen"
+                                    )
 
                     # Geen zichtbaar label én naam zonder extensie: kopieer de bron
                     # naar een temp MÉT extensie, zodat c2patool de input herkent.
@@ -848,22 +881,26 @@ def process_batch(job_id: str, cfg: dict):
                         shutil.copy2(f, working)
 
                     # ----- Stap 2: C2PA ondertekenen -----
+                    stage = "C2PA"
                     ok, msg = sign_with_c2patool(working, sign_out, manifest_path)
                     if not ok:
                         raise RuntimeError(msg)
-                    layers.append("C2PA")
+                    steps.append(("C2PA", True))
 
                     # ----- Stap 3: verifiëren -----
                     if do_verify:
+                        stage = "verificatie"
                         vok, vmsg = verify_with_c2patool(sign_out, expected_dst)
                         if not vok:
                             if replace_originals and final_out.exists():
                                 final_out.unlink()
-                            log("FOUT", shown[f], f"verificatie: {vmsg}", " + ".join(layers))
+                            steps.append(("verificatie", False))
+                            log("FOUT", shown[f], f"verificatie: {vmsg}", steps)
                             n_error += 1
                             processed += 1
                             emit({"type": "progress", "done": processed, "total": total})
                             continue
+                        steps.append(("verificatie", True))
 
                     # Eindresultaat op exact de juiste (mogelijk extensieloze) naam
                     # zetten. Cross-device-veilig via shutil.move.
@@ -877,14 +914,18 @@ def process_batch(job_id: str, cfg: dict):
                     if replace_originals:
                         replace_original(final_out, f, backup)
 
-                    lay = " + ".join(layers) if layers else "-"
                     msg_ok = "getekend" + (" + geverifieerd" if do_verify else "")
                     if replace_originals:
                         msg_ok += " \u2192 origineel vervangen"
-                    elif str(final_out.relative_to(out_dir)) != shown[f]:
-                        msg_ok += f" \u2192 {final_out.relative_to(out_dir)}"
-                    log("OK", shown[f], msg_ok, lay)
-                    n_signed += 1
+                    elif out_name(final_out) != shown[f]:
+                        msg_ok += f" \u2192 {out_name(final_out)}"
+                    if label_missing:
+                        # getekend, maar niet alles wat gevraagd was: geen OK
+                        log("DEELS", shown[f], f"{msg_ok}, zonder zichtbaar label: {label_missing}", steps)
+                        n_partial += 1
+                    else:
+                        log("OK", shown[f], msg_ok, steps)
+                        n_signed += 1
                 except Exception as e:  # noqa: BLE001
                     # Bij ReplaceFailed blijft de getekende versie staan als
                     # herstelkopie; de melding noemt waar.
@@ -893,19 +934,35 @@ def process_batch(job_id: str, cfg: dict):
                             final_out.unlink()
                         except OSError:
                             pass
-                    log("FOUT", shown[f], str(e), " + ".join(layers))
+                    if stage and stage not in [n for n, _ in steps]:
+                        steps.append((stage, False))
+                    log("FOUT", shown[f], str(e), steps)
                     n_error += 1
                 processed += 1
                 emit({"type": "progress", "done": processed, "total": total})
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
+        if retry:
+            # gerichte herhaalpoging: alleen deze bestanden, zelfde instellingen
+            while len(RETRIES) >= 20:
+                RETRIES.pop(next(iter(RETRIES)))
+            RETRIES[job_id] = dict(
+                cfg,
+                files=[str(f) for f in retry],
+                _pinned={
+                    "base": str(base) if base is not None else "",
+                    "outputs": {str(f): str(outputs[f]) for f in retry if f in outputs},
+                },
+            )
         emit(
             {
                 "type": "summary",
                 "signed": n_signed,
+                "partial": n_partial,
                 "skipped": n_skipped,
                 "errors": n_error,
+                "retry": len(retry),
                 "output": (str(in_dir) if replace_originals else str(out_dir)),
                 "replace": replace_originals,
             }
@@ -1614,7 +1671,30 @@ async def api_process(cfg: dict):
         "replace_originals": bool(cfg.get("replace_originals")),
         "label": label,
     }
+    return _start_job(job_cfg)
 
+
+@app.post("/api/retry/{job_id}")
+def api_retry(job_id: str, payload: Optional[dict] = None):
+    """Herhaal een run alleen voor de bestanden waarvan het gevraagde zichtbare
+    label mislukte (bv. na het installeren van ffmpeg), met dezelfde
+    instellingen en dezelfde uitvoerpaden als de eerste keer."""
+    retry_cfg = RETRIES.get(job_id)
+    if not retry_cfg:
+        raise HTTPException(404, "Niets om opnieuw te proberen voor deze run.")
+    if not c2patool_info()["present"]:
+        raise HTTPException(400, "c2patool niet gevonden. Installeer het eerst.")
+    if retry_cfg.get("replace_originals") and not (payload or {}).get("confirm_replace"):
+        raise HTTPException(400, "Vervangen van originelen is niet bevestigd.")
+    for f in retry_cfg["files"]:
+        if not Path(f).is_file():
+            raise HTTPException(400, f"Bestand bestaat niet meer: {f}")
+    started = _start_job(retry_cfg)
+    RETRIES.pop(job_id, None)  # mislukt het weer, dan krijgt de nieuwe run er een
+    return started
+
+
+def _start_job(job_cfg: dict):
     job_id = uuid.uuid4().hex
     JOBS[job_id] = {"queue": queue.Queue(), "done": False}
     t = threading.Thread(target=process_batch, args=(job_id, job_cfg), daemon=True)

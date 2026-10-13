@@ -91,10 +91,11 @@
   .log .l{display:flex;gap:8px;padding:1.5px 0}
   .tag{flex:0 0 auto;font-weight:700;width:42px}
   .tag.OK{color:var(--primary)} .tag.SKIP{color:var(--muted-2)} .tag.FOUT{color:var(--err)}
-  .tag.INFO{color:var(--blue)}
+  .tag.INFO{color:var(--blue)} .tag.DEELS{color:var(--warn)}
   .log .fn{color:#d7dcd7;flex:0 0 auto;max-width:38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .log .ms{color:var(--muted)}
   .log .lay{color:var(--primary);margin-left:auto;flex:0 0 auto}
+  .log .lay .bad{color:var(--err)}
   .res-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:18px 0 10px}
   .res-head h2{margin:0}
   .res-head .status{font-size:12px;color:var(--muted-2)}
@@ -108,7 +109,8 @@
   .summary .n{font-size:12.5px;color:var(--muted)}
   .summary .n b{font-size:22px;display:block;font-weight:650;line-height:1.15}
   .summary .n.ok b{color:var(--primary)} .summary .n.sk b{color:var(--muted)}
-  .summary .n.er b{color:var(--err)}
+  .summary .n.er b{color:var(--err)} .summary .n.pa b{color:var(--warn)}
+  #retryBtn{margin-top:12px}
   .file-hint{font-size:11.5px;color:var(--muted-2);word-break:break-all}
   .modal-ov{position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(3px);
     -webkit-backdrop-filter:blur(3px);z-index:80;display:flex;align-items:center;justify-content:center;padding:20px}
@@ -313,10 +315,12 @@
     <div class="summary" id="summary">
       <div class="nums">
         <div class="n ok"><b id="sSigned">0</b> getekend</div>
+        <div class="n pa"><b id="sPartial">0</b> deels</div>
         <div class="n sk"><b id="sSkipped">0</b> overgeslagen</div>
         <div class="n er"><b id="sErrors">0</b> fouten</div>
       </div>
       <div class="file-hint"><span id="sOutLabel">Uitvoermap:</span> <span id="sOut"></span></div>
+      <button class="btn ghost sm" id="retryBtn" type="button" hidden title="Installeer eerst ffmpeg als dat ontbrak"></button>
     </div>
   </div>
 </main>
@@ -620,55 +624,78 @@ $('startBtn').onclick=async()=>{
     return;
   }
   if(cfg.replace_originals){
-    const ok = await confirmModal({
-      title:'Weet je zeker dat je de beelden wilt vervangen?',
-      body:'<p>Je staat op het punt de <b>originele bestanden</b> in de invoermap te '
-          +'<b>overschrijven</b> met de gelabelde + ondertekende versie.</p>'
-          +'<p>Dit kan <b>niet ongedaan</b> worden gemaakt en er wordt <b>geen kopie</b> '
-          +'bewaard. Maak vooraf een back-up als je de originelen wilt behouden.</p>',
-      confirmText:'Ik weet het zeker',
-      cancelText:'Annuleren'
-    });
-    if(!ok){ toast('Geannuleerd — originelen niet vervangen.'); return; }
+    if(!(await confirmReplace())){ toast('Geannuleerd — originelen niet vervangen.'); return; }
     cfg.confirm_replace = true;
   }
+  await runJob('/api/process', cfg);
+};
+// alleen de bestanden waarvan het zichtbare label mislukte, zelfde instellingen
+$('retryBtn').onclick=async()=>{
+  if(!C2PA_OK || !LAST_JOB) return;
+  const body={};
+  if(LAST_REPLACE){
+    if(!(await confirmReplace())){ toast('Geannuleerd — originelen niet vervangen.'); return; }
+    body.confirm_replace = true;
+  }
+  await runJob('/api/retry/'+LAST_JOB, body);
+};
+let LAST_JOB=null, LAST_REPLACE=false;
+function confirmReplace(){
+  return confirmModal({
+    title:'Weet je zeker dat je de beelden wilt vervangen?',
+    body:'<p>Je staat op het punt de <b>originele bestanden</b> in de invoermap te '
+        +'<b>overschrijven</b> met de gelabelde + ondertekende versie.</p>'
+        +'<p>Dit kan <b>niet ongedaan</b> worden gemaakt en er wordt <b>geen kopie</b> '
+        +'bewaard. Maak vooraf een back-up als je de originelen wilt behouden.</p>',
+    confirmText:'Ik weet het zeker',
+    cancelText:'Annuleren'
+  });
+}
+async function runJob(url, body){
   $('log').innerHTML=''; $('bar').style.width='0%'; $('summary').classList.remove('show');
   $('resStatus').textContent='Bezig\u2026';
   $('startBtn').disabled=true; $('startBtn').textContent='Bezig…';
   let res;
   try{
-    res=await fetch('/api/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)});
+    res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   }catch(e){ toast('Kon proces niet starten.',true); resetStart(); return; }
   if(!res.ok){ const j=await res.json().catch(()=>({})); toast(j.detail||'Start mislukt.',true); resetStart(); return; }
   const {job_id}=await res.json();
+  LAST_JOB=job_id; $('retryBtn').hidden=true;
   const es=new EventSource('/api/stream/'+job_id);
   es.onmessage=(m)=>{
     const ev=JSON.parse(m.data);
     if(ev.type==='start'){ addLog('INFO','',`${ev.total} bestand(en) gevonden · uitvoer: ${ev.output}`,''); }
     else if(ev.type==='progress'){ $('bar').style.width=Math.round(ev.done/ev.total*100)+'%'; }
-    else if(ev.type==='log'){ addLog(ev.status,ev.file,ev.msg,ev.layers); }
+    else if(ev.type==='log'){ addLog(ev.status,ev.file,ev.msg,ev.steps); }
     else if(ev.type==='error'){ addLog('FOUT','',ev.msg,''); }
     else if(ev.type==='summary'){ showSummary(ev); }
     else if(ev.type==='done'){ es.close(); resetStart(); }
   };
   es.onerror=()=>{ es.close(); resetStart(); };
-};
+}
 function resetStart(){ $('startBtn').disabled=!C2PA_OK; syncUI(); }
-function addLog(status,file,msg,layers){
+function addLog(status,file,msg,steps){
   const l=document.createElement('div'); l.className='l';
+  // status per aangevraagde laag: icoon / C2PA / verificatie, elk \u2713 of \u2717
+  const lay=(steps||[]).map(s=>`<span class="${s.ok?'':'bad'}">${escapeHtml(s.name)} ${s.ok?'\u2713':'\u2717'}</span>`).join(' \u00b7 ');
   l.innerHTML=`<span class="tag ${status}">${status}</span>`+
     (file?`<span class="fn">${escapeHtml(file)}</span>`:'')+
     `<span class="ms">${escapeHtml(msg||'')}</span>`+
-    (layers?`<span class="lay">${escapeHtml(layers)}</span>`:'');
+    (lay?`<span class="lay">${lay}</span>`:'');
   $('log').appendChild(l); $('log').scrollTop=$('log').scrollHeight;
 }
 function showSummary(ev){
-  $('sSigned').textContent=ev.signed; $('sSkipped').textContent=ev.skipped;
+  $('sSigned').textContent=ev.signed; $('sPartial').textContent=ev.partial; $('sSkipped').textContent=ev.skipped;
   $('sErrors').textContent=ev.errors; $('sOut').textContent=ev.output;
   $('sOutLabel').textContent = ev.replace ? 'Originelen vervangen in:' : 'Uitvoermap:';
   $('summary').classList.add('show'); $('bar').style.width='100%';
-  $('resStatus').textContent=`Klaar \u00b7 ${ev.signed} getekend, ${ev.skipped} overgeslagen, ${ev.errors} fouten`;
-  toast(`Klaar: ${ev.signed} getekend, ${ev.skipped} overgeslagen, ${ev.errors} fouten.`);
+  LAST_REPLACE=!!ev.replace;
+  $('retryBtn').textContent=`Opnieuw proberen: ${ev.retry} bestand(en) zonder zichtbaar label`;
+  $('retryBtn').hidden = !ev.retry;
+  const deels = ev.partial ? `, ${ev.partial} deels` : '';
+  $('resStatus').textContent=`Klaar \u00b7 ${ev.signed} getekend${deels}, ${ev.skipped} overgeslagen, ${ev.errors} fouten`;
+  toast(`Klaar: ${ev.signed} getekend${deels}, ${ev.skipped} overgeslagen, ${ev.errors} fouten.`, !!(ev.partial||ev.errors));
 }
 function escapeHtml(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 

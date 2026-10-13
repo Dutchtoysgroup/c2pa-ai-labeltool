@@ -61,9 +61,19 @@ tool toont of je de nieuwste hebt.
 ## ffmpeg (optioneel, alleen voor video)
 
 Pillow kan geen videobeelden bewerken. Is `ffmpeg` aanwezig, dan wordt het
-zichtbare icoon ook in `.mp4`/`.mov` gebrand; zo niet, dan slaat de tool de
-zichtbare laag voor video over (met een logregel) en zet het **wel** C2PA.
-Installeer op macOS met `brew install ffmpeg`.
+zichtbare icoon ook in `.mp4`/`.mov` gebrand. Ontbreekt ffmpeg of mislukt de
+overlay terwijl het zichtbare label aan staat, dan krijgt de video **geen OK**:
+
+- naar een uitvoermap: wel getekend met C2PA, maar met status **DEELS** en de
+  reden in het log;
+- bij *Originelen vervangen*: het origineel wordt **niet** vervangen (status
+  FOUT), want je hebt een gelabelde versie bevestigd.
+
+Elke logregel toont per aangevraagde laag (icoon, C2PA, verificatie) een ✓ of
+✗, en de samenvatting telt de deels gelukte bestanden apart. Onder de
+samenvatting staat dan **Opnieuw proberen**: dat verwerkt alleen die bestanden
+nog eens, met dezelfde instellingen en naar dezelfde uitvoerpaden (dus na het
+installeren van ffmpeg). Installeer op macOS met `brew install ffmpeg`.
 
 ---
 
