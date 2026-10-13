@@ -85,10 +85,18 @@ Installeer op macOS met `brew install ffmpeg`.
 - **Uitvoermap** → standaard `<invoer>/gelabeld`; originelen worden dan nooit
   overschreven.
 - **Originelen vervangen** (aanvinken) → schrijft het gelabelde + ondertekende
-  bestand **atomair terug over het origineel** in plaats van naar een uitvoermap.
+  bestand **terug over het origineel** in plaats van naar een uitvoermap.
   Onomkeerbaar en zonder kopie, dus dubbel gezekerd: je vinkt het zelf aan én
   bevestigt bij Start in een pop-up (waarin de veilige **Annuleren**-knop bewust
   de opvallende groene is). Maak vooraf een back-up.
+  Op een lokale schijf gaat dat atomair (rename). Cloud-opslag (Box, Google
+  Drive, iCloud, OneDrive) weigert dat vaak; dan maakt de tool eerst een
+  gecontroleerde backup `.c2pabackup_<naam>` naast het origineel, overschrijft
+  de inhoud en controleert die byte voor byte. Mislukt dat, dan wordt de backup
+  teruggezet en blijft de getekende versie staan als `.c2patmp_<naam>`; het log
+  noemt de paden. Lukt ook terugzetten niet, dan blijft de backup staan en slaat
+  een volgende run dat bestand over tot je de backup hebt nagekeken en
+  verwijderd.
 - **Bronsoort** bepaalt de `digitalSourceType`:
   - *Volledig AI-gegenereerd* → `…/trainedAlgorithmicMedia`
   - *Echte foto met AI-elementen* → `…/compositeWithTrainedAlgorithmicMedia`
@@ -197,6 +205,7 @@ geen `match`/`case`. Controle vóór je pusht:
 
 ```bash
 /usr/bin/python3 -m py_compile app.py updater.py desktop.py
+.venv/bin/python -m unittest discover tests
 ```
 
 ## Projectstructuur
@@ -207,6 +216,7 @@ desktop.py        Startpunt van de app: update, server starten, browser openen
 updater.py        Versie, gebruikersmap en de update-feed
 VERSION           Versienummer van de app
 static/index.html Single-page UI (vanilla HTML/CSS/JS, geen build-stap)
+tests/            Unittests (o.a. vervang-modus bij weigerende cloud-opslag)
 requirements.txt  Python-dependencies
 templates.json    Gedeelde templates (zitten in de app)
 icons/            Gedeelde iconen (PNG met transparantie)

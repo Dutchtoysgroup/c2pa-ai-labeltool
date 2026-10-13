@@ -560,6 +560,97 @@ def detect_ext(f: Path) -> str:
     return ""
 
 
+class ReplaceFailed(RuntimeError):
+    """Het origineel is niet vervangen. De getekende versie en een eventuele
+    backup staan nog op schijf en mogen dan niet worden opgeruimd."""
+
+
+def _same_content(a: Path, b: Path) -> bool:
+    """Byte-voor-byte gelijk? False als een van beide niet leesbaar is."""
+    try:
+        if a.stat().st_size != b.stat().st_size:
+            return False
+        with open(a, "rb") as fa, open(b, "rb") as fb:
+            while True:
+                chunk = fa.read(1 << 20)
+                if chunk != fb.read(1 << 20):
+                    return False
+                if not chunk:
+                    return True
+    except OSError:
+        return False
+
+
+def _copy_verified(src: Path, dst: Path):
+    shutil.copyfile(src, dst)
+    if not _same_content(src, dst):
+        raise OSError(f"{dst.name} wijkt na het kopiëren af van {src.name}")
+
+
+def replace_original(signed: Path, original: Path, backup: Path):
+    """Zet de getekende versie `signed` op de plek van `original`.
+
+    Op een lokale schijf is os.replace atomair. Cloud-opslag (Box / Google
+    Drive / iCloud / OneDrive) weigert echter vaak een rename-over-bestaand
+    ([Errno 1] Operation not permitted); dan overschrijven we de inhoud in
+    place. Een fout halverwege die kopie beschadigt het origineel, dus dat
+    gebeurt pas als er een gecontroleerde backup naast staat, en bij een fout
+    zetten we die backup terug. `signed` en `backup` gaan pas weg als het
+    origineel aantoonbaar de getekende inhoud heeft; anders volgt ReplaceFailed
+    met de paden waar alles staat.
+    """
+    try:
+        os.replace(signed, original)
+        return
+    except OSError:
+        pass
+
+    if backup.exists():
+        raise ReplaceFailed(
+            f"origineel niet vervangen: er staat al een backup ({backup}). "
+            f"Getekende versie staat in {signed}"
+        )
+    try:
+        _copy_verified(original, backup)
+    except OSError as e:
+        try:
+            backup.unlink()
+        except OSError:
+            pass
+        raise ReplaceFailed(
+            f"origineel niet vervangen, backup maken mislukt ({e}). Origineel is "
+            f"ongewijzigd; getekende versie staat in {signed}"
+        )
+
+    try:
+        _copy_verified(signed, original)
+    except OSError as e:
+        state = "ongewijzigd"
+        if not _same_content(backup, original):
+            try:
+                _copy_verified(backup, original)
+            except OSError as e2:
+                raise ReplaceFailed(
+                    f"vervangen mislukt ({e}) en terugzetten mislukt ({e2}). Het "
+                    f"origineel staat in {backup}, de getekende versie in {signed}"
+                )
+            state = "teruggezet"
+        try:
+            backup.unlink()
+        except OSError:
+            pass
+        raise ReplaceFailed(
+            f"vervangen mislukt ({e}). Origineel is {state}; getekende versie "
+            f"staat in {signed}"
+        )
+
+    for p in (signed, backup):
+        try:
+            p.unlink()
+        except OSError:
+            pass
+
+
 def process_batch(job_id: str, cfg: dict):
     q: queue.Queue = JOBS[job_id]["queue"]
 
@@ -634,10 +725,12 @@ def process_batch(job_id: str, cfg: dict):
                 ext = eff[f]  # effectieve extensie (echte suffix, of uit inhoud)
                 name_has_ext = f.suffix.lower() in SUPPORTED_EXT
                 if replace_originals:
-                    # temp met leidende punt (wordt genegeerd door collect_files)
+                    # temp en backup met leidende punt (genegeerd door collect_files)
                     final_out = f.parent / f".c2patmp_{f.name}"
+                    backup = f.parent / f".c2pabackup_{f.name}"
                 else:
                     final_out = out_dir / f.name
+                    backup = None
                 # c2patool eist een extensie op in- én uitvoer. Voor bestanden
                 # ZONDER (bruikbare) extensie in de naam werken we intern via
                 # temp-bestanden MÉT extensie en zetten we het eindresultaat
@@ -646,6 +739,15 @@ def process_batch(job_id: str, cfg: dict):
                 tmp_suffix = "" if name_has_ext else ext
                 layers = []
                 try:
+                    # Een backup van een eerder mislukte vervanging kan het enige
+                    # intacte origineel zijn: eerst laten nakijken, niet overschrijven.
+                    if replace_originals and backup.exists():
+                        raise ReplaceFailed(
+                            f"overgeslagen: er staat nog een backup van een eerder mislukte "
+                            f"vervanging ({backup}). Controleer het origineel en verwijder "
+                            f"daarna de backup."
+                        )
+
                     working = f  # bron voor de C2PA-stap
 
                     # ----- Stap 1: zichtbaar label -----
@@ -700,21 +802,10 @@ def process_batch(job_id: str, cfg: dict):
                             final_out.unlink()
                         shutil.move(str(sign_out), str(final_out))
 
-                    # In vervang-modus: over het origineel heen zetten. Op een
-                    # lokale schijf is os.replace atomair; cloud-opslag (Box /
-                    # Google Drive / iCloud / OneDrive) weigert echter vaak een
-                    # rename-over-bestaand ([Errno 1] Operation not permitted).
-                    # Dan vallen we terug op het in-place overschrijven van de
-                    # inhoud. Pas ná een geslaagde (en evt. geverifieerde) tekening.
+                    # In vervang-modus: over het origineel heen zetten, pas ná een
+                    # geslaagde (en evt. geverifieerde) tekening.
                     if replace_originals:
-                        try:
-                            os.replace(final_out, f)
-                        except OSError:
-                            shutil.copyfile(final_out, f)
-                            try:
-                                os.remove(final_out)
-                            except OSError:
-                                pass
+                        replace_original(final_out, f, backup)
 
                     lay = " + ".join(layers) if layers else "-"
                     msg_ok = "getekend" + (" + geverifieerd" if do_verify else "")
@@ -723,7 +814,9 @@ def process_batch(job_id: str, cfg: dict):
                     log("OK", f.name, msg_ok, lay)
                     n_signed += 1
                 except Exception as e:  # noqa: BLE001
-                    if replace_originals and final_out.exists():
+                    # Bij ReplaceFailed blijft de getekende versie staan als
+                    # herstelkopie; de melding noemt waar.
+                    if replace_originals and not isinstance(e, ReplaceFailed) and final_out.exists():
                         try:
                             final_out.unlink()
                         except OSError:
