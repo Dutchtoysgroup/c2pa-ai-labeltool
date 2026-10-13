@@ -83,7 +83,13 @@ Installeer op macOS met `brew install ffmpeg`.
     beelden selecteert — dan worden **alléén die bestanden** verwerkt. De
     invoermap wordt afgeleid van de map van het eerste bestand.
 - **Uitvoermap** → standaard `<invoer>/gelabeld`; originelen worden dan nooit
-  overschreven.
+  overschreven. De mappenstructuur onder de invoermap blijft behouden (bij
+  losse bestanden: onder de diepste map waar ze allemaal in staan), zodat
+  `a/product.jpg` en `b/product.jpg` twee aparte uitvoerbestanden worden. Komt
+  er dan toch twee keer hetzelfde pad uit (bijv. alleen een verschil in
+  hoofdletters), dan krijgt het volgende bestand een volgnummer
+  (`product (2).jpg`) en meldt het log dat vooraf. Een uitvoerpad dat op een
+  van de bronbestanden zelf uitkomt, wordt geweigerd.
 - **Originelen vervangen** (aanvinken) → schrijft het gelabelde + ondertekende
   bestand **terug over het origineel** in plaats van naar een uitvoermap.
   Onomkeerbaar en zonder kopie, dus dubbel gezekerd: je vinkt het zelf aan én

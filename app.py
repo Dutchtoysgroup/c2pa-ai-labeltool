@@ -23,6 +23,7 @@ import sys
 import tempfile
 import threading
 import time
+import unicodedata
 import uuid
 import webbrowser
 from datetime import datetime, timezone
@@ -560,6 +561,52 @@ def detect_ext(f: Path) -> str:
     return ""
 
 
+def _path_key(p: Path) -> str:
+    """Vergelijkingssleutel voor paden: Finder en Verkenner zien Product.jpg en
+    product.jpg (en de NFC- en NFD-spelling van é) als hetzelfde bestand."""
+    return unicodedata.normalize("NFC", str(p)).casefold()
+
+
+def common_base(files) -> Optional[Path]:
+    """Diepste map waar alle bestanden onder vallen, of None (bv. verschillende
+    schijven op Windows)."""
+    try:
+        return Path(os.path.commonpath([str(f.parent) for f in files]))
+    except ValueError:
+        return None
+
+
+def relative_name(f: Path, base: Optional[Path]) -> Path:
+    if base is not None:
+        try:
+            return f.relative_to(base)
+        except ValueError:
+            pass
+    return Path(f.name)
+
+
+def plan_outputs(files, base: Optional[Path], out_dir: Path) -> dict:
+    """Uitvoerpad per bronbestand, met dezelfde relatieve mappenstructuur onder
+    out_dir als onder `base`, zodat a/product.jpg en b/product.jpg niet op één
+    uitvoerbestand eindigen. Botst het dan nog (alleen hoofdletters verschillen,
+    of er is geen gemeenschappelijke basis), dan krijgt elk volgend bestand een
+    volgnummer: product (2).jpg."""
+    natural = {f: out_dir / relative_name(f, base) for f in files}
+    taken = {_path_key(d) for d in natural.values()}
+    used = set()
+    plan = {}
+    for f, dst in natural.items():
+        if _path_key(dst) in used:
+            n = 2
+            while _path_key(dst.with_name(f"{dst.stem} ({n}){dst.suffix}")) in taken:
+                n += 1
+            dst = dst.with_name(f"{dst.stem} ({n}){dst.suffix}")
+            taken.add(_path_key(dst))
+        used.add(_path_key(dst))
+        plan[f] = dst
+    return plan
+
+
 class ReplaceFailed(RuntimeError):
     """Het origineel is niet vervangen. De getekende versie en een eventuele
     backup staan nog op schijf en mogen dan niet worden opgeruimd."""
@@ -680,8 +727,12 @@ def process_batch(job_id: str, cfg: dict):
             out_dir.mkdir(parents=True, exist_ok=True)
 
         if selected:
-            # alleen de expliciet gekozen bestanden verwerken
-            all_files = [f for f in selected if f.is_file()]
+            # alleen de expliciet gekozen bestanden verwerken (elk één keer)
+            uniq = {}
+            for f in selected:
+                if f.is_file():
+                    uniq.setdefault(_path_key(f.resolve()), f)
+            all_files = list(uniq.values())
         else:
             all_files = collect_files(in_dir, cfg.get("recursive", False))
             # negeer bestanden die al in de uitvoermap staan
@@ -699,8 +750,20 @@ def process_batch(job_id: str, cfg: dict):
             emit({"type": "done"})
             return
 
+        # Namen in het log en in de uitvoermap relatief aan de invoermap, of bij
+        # losse bestanden aan de diepste map waar ze allemaal onder vallen.
+        base = common_base(all_files) if selected else in_dir
+        shown = {f: str(relative_name(f, base)) for f in all_files}
+        outputs = plan_outputs(work, base, out_dir) if out_dir is not None else {}
+        sources = {_path_key(f.resolve()) for f in all_files}
+
         out_label = "originelen worden vervangen" if replace_originals else str(out_dir)
         emit({"type": "start", "total": total, "output": out_label, "replace": replace_originals})
+
+        for f in work:
+            if f in outputs and str(outputs[f].relative_to(out_dir)) != shown[f]:
+                log("INFO", shown[f], f"zelfde uitvoerpad als een ander bestand: wordt "
+                    f"{outputs[f].relative_to(out_dir)}")
 
         manifest = build_manifest(cfg)
         do_visible = cfg.get("burn_icon", True)
@@ -712,7 +775,7 @@ def process_batch(job_id: str, cfg: dict):
         processed = 0
 
         for f in skipped_unsupported:
-            log("SKIP", f.name, "niet-ondersteund bestandstype")
+            log("SKIP", shown[f], "niet-ondersteund bestandstype")
             n_skipped += 1
             processed += 1
             emit({"type": "progress", "done": processed, "total": total})
@@ -729,7 +792,7 @@ def process_batch(job_id: str, cfg: dict):
                     final_out = f.parent / f".c2patmp_{f.name}"
                     backup = f.parent / f".c2pabackup_{f.name}"
                 else:
-                    final_out = out_dir / f.name
+                    final_out = outputs[f]
                     backup = None
                 # c2patool eist een extensie op in- én uitvoer. Voor bestanden
                 # ZONDER (bruikbare) extensie in de naam werken we intern via
@@ -747,6 +810,13 @@ def process_batch(job_id: str, cfg: dict):
                             f"vervanging ({backup}). Controleer het origineel en verwijder "
                             f"daarna de backup."
                         )
+                    if not replace_originals:
+                        # c2patool -f overschrijft zonder te vragen
+                        if _path_key(final_out.resolve()) in sources:
+                            raise RuntimeError(
+                                f"uitvoer {final_out} zou een bronbestand overschrijven; kies een andere uitvoermap"
+                            )
+                        final_out.parent.mkdir(parents=True, exist_ok=True)
 
                     working = f  # bron voor de C2PA-stap
 
@@ -767,9 +837,9 @@ def process_batch(job_id: str, cfg: dict):
                                     working = vtmp
                                     layers.append("icoon")
                                 else:
-                                    log("INFO", f.name, f"video-overlay overgeslagen: {vmsg}")
+                                    log("INFO", shown[f], f"video-overlay overgeslagen: {vmsg}")
                             else:
-                                log("INFO", f.name, "geen ffmpeg: zichtbaar label overgeslagen voor video")
+                                log("INFO", shown[f], "geen ffmpeg: zichtbaar label overgeslagen voor video")
 
                     # Geen zichtbaar label én naam zonder extensie: kopieer de bron
                     # naar een temp MÉT extensie, zodat c2patool de input herkent.
@@ -789,7 +859,7 @@ def process_batch(job_id: str, cfg: dict):
                         if not vok:
                             if replace_originals and final_out.exists():
                                 final_out.unlink()
-                            log("FOUT", f.name, f"verificatie: {vmsg}", " + ".join(layers))
+                            log("FOUT", shown[f], f"verificatie: {vmsg}", " + ".join(layers))
                             n_error += 1
                             processed += 1
                             emit({"type": "progress", "done": processed, "total": total})
@@ -811,7 +881,9 @@ def process_batch(job_id: str, cfg: dict):
                     msg_ok = "getekend" + (" + geverifieerd" if do_verify else "")
                     if replace_originals:
                         msg_ok += " \u2192 origineel vervangen"
-                    log("OK", f.name, msg_ok, lay)
+                    elif str(final_out.relative_to(out_dir)) != shown[f]:
+                        msg_ok += f" \u2192 {final_out.relative_to(out_dir)}"
+                    log("OK", shown[f], msg_ok, lay)
                     n_signed += 1
                 except Exception as e:  # noqa: BLE001
                     # Bij ReplaceFailed blijft de getekende versie staan als
@@ -821,7 +893,7 @@ def process_batch(job_id: str, cfg: dict):
                             final_out.unlink()
                         except OSError:
                             pass
-                    log("FOUT", f.name, str(e), " + ".join(layers))
+                    log("FOUT", shown[f], str(e), " + ".join(layers))
                     n_error += 1
                 processed += 1
                 emit({"type": "progress", "done": processed, "total": total})
